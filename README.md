@@ -1,3 +1,9 @@
+<div style="background-color: #ff0000; padding: 15px; margin-bottom: 20px;">
+   <strong>Note:</strong> This repository, including this readme is generated automatically using LLMs.
+</div>
+
+The prompt is provided [here](input_prompt_for_llms.md).
+
 # README - Research Article Summarization and Tag Management System
 
 This project is a minimal Python-based system for processing research articles, generating summaries at various levels (article, section, TLDR), extracting relevant tags, and creating tag-specific descriptions and surveys. It uses OpenAI's API for text generation and embeddings, and stores content and vector data for future retrieval and iterative updates. The system is designed to be lightweight, using simple file-based storage instead of a complex database.
