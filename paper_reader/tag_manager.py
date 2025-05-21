@@ -1,14 +1,14 @@
 # tag_manager.py
 import os
 from typing import List, Dict, Optional
-from models import TagInfo, ArticleSummary, Content
-from utils import (
+from paper_reader.models import TagInfo, ArticleSummary, Content
+from paper_reader.utils import (
     ensure_dir_exists,
     slugify,
     save_text_and_embedding,
     load_text_and_embedding
 )
-from config import (
+from paper_reader.config import (
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
     TAG_SURVEY_MD_FILE,
@@ -18,8 +18,8 @@ from config import (
     MAX_TOKENS_TAG_SURVEY,
     DOCS_DIR, SUMMARIZED_MD_FILE
 )
-from openai_utils import get_embedding, generate_completion
-from vector_store import get_relevant_context_for_prompt # For RAG
+from paper_reader.openai_utils import get_embedding, generate_completion
+from paper_reader.vector_store import get_relevant_context_for_prompt # For RAG
 
 # Global store for tags (in-memory, could be persisted to a JSON file)
 # Maps tag_slug to TagInfo

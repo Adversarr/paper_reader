@@ -1,11 +1,12 @@
 # main.py
 import os
 from typing import List, Tuple
-from article_processor import process_article
-from tag_manager import update_tag_with_article, process_all_tags_iteratively
-from models import ArticleSummary
-from config import DOCS_DIR, VAULT_DIR, EXTRACTED_MD_FILE
-from utils import ensure_dir_exists, slugify
+from dotenv import load_dotenv
+from paper_reader.article_processor import process_article
+from paper_reader.tag_manager import update_tag_with_article, process_all_tags_iteratively
+from paper_reader.models import ArticleSummary
+from paper_reader.config import DOCS_DIR, VAULT_DIR, EXTRACTED_MD_FILE
+from paper_reader.utils import ensure_dir_exists, slugify
 
 def discover_papers() -> List[Tuple[str, str]]:
     """
@@ -38,6 +39,8 @@ def main():
     Main function to orchestrate the processing of articles and tags.
     """
     print("Starting RAG System Processing...")
+    load_dotenv()  # Load environment variables from .env file
+
     ensure_dir_exists(VAULT_DIR)
     ensure_dir_exists(DOCS_DIR)
     ensure_dir_exists(os.path.join(VAULT_DIR, "tags")) # Ensure TAGS_DIR from config exists
@@ -84,9 +87,4 @@ def main():
     print("\nRAG System Processing Complete.")
 
 if __name__ == "__main__":
-    # Before running, ensure OPENAI_API_KEY environment variable is set.
-    if not os.getenv("OPENAI_API_KEY") and False:
-        print("Error: OPENAI_API_KEY environment variable is not set.")
-        print("Please set it before running the script.")
-    else:
-        main()
+    main()

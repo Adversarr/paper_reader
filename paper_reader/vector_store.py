@@ -2,13 +2,14 @@
 import numpy as np
 import os
 from typing import List, Tuple, Optional
-from models import Content, ArticleSummary, TagInfo
-from utils import load_text_and_embedding
-from config import DOCS_DIR, TAGS_DIR, SUMMARIZED_MD_FILE, TAG_DESCRIPTION_MD_FILE
+from paper_reader.models import Content, ArticleSummary, TagInfo
+from paper_reader.utils import load_text_and_embedding
+from paper_reader.config import DOCS_DIR, TAGS_DIR, SUMMARIZED_MD_FILE, TAG_DESCRIPTION_MD_FILE
 
 # In a real vector database, this would be more sophisticated.
 # For this minimal implementation, we'll load embeddings on demand for querying.
 # We assume embeddings are already stored alongside their .md files.
+
 
 def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     """Computes cosine similarity between two vectors."""
@@ -21,23 +22,21 @@ def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
         return 0.0
     return dot_product / (norm_vec1 * norm_vec2)
 
-def find_similar_content(
-    query_embedding: np.ndarray,
-    content_list: List[Content],
-    top_k: int = 5
-) -> List[Content]:
+
+def find_similar_content(query_embedding: np.ndarray, content_list: List[Content], top_k: int = 5) -> List[Content]:
     """Finds top_k similar content items from a list based on cosine similarity."""
     if query_embedding is None or not content_list:
         return []
 
     similarities = []
     for item in content_list:
-        if item['vector'] is not None:
-            sim = cosine_similarity(query_embedding, item['vector'])
+        if item["vector"] is not None:
+            sim = cosine_similarity(query_embedding, item["vector"])
             similarities.append((item, sim))
 
     similarities.sort(key=lambda x: x[1], reverse=True)
     return [item for item, sim in similarities[:top_k]]
+
 
 def load_all_article_summaries_for_rag() -> List[Content]:
     """Loads all available article summaries (summarized.md) for RAG."""
@@ -48,12 +47,13 @@ def load_all_article_summaries_for_rag() -> List[Content]:
         paper_dir = os.path.join(DOCS_DIR, paper_slug)
         if os.path.isdir(paper_dir):
             summary_content = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
-            if summary_content and summary_content['content']: # Ensure content is not empty
+            if summary_content and summary_content["content"]:  # Ensure content is not empty
                 # Add title information for better context in RAG prompts
-                title_from_slug = paper_slug.replace('-', ' ').title()
+                title_from_slug = paper_slug.replace("-", " ").title()
                 enriched_content = f"Article Title: {title_from_slug}\nSummary:\n{summary_content['content']}"
-                all_summaries.append(Content(content=enriched_content, vector=summary_content['vector']))
+                all_summaries.append(Content(content=enriched_content, vector=summary_content["vector"]))
     return all_summaries
+
 
 def load_all_tag_descriptions_for_rag() -> List[Content]:
     """Loads all available tag descriptions for RAG."""
@@ -64,23 +64,24 @@ def load_all_tag_descriptions_for_rag() -> List[Content]:
         tag_dir = os.path.join(TAGS_DIR, tag_slug)
         if os.path.isdir(tag_dir):
             desc_content = load_text_and_embedding(tag_dir, TAG_DESCRIPTION_MD_FILE)
-            if desc_content and desc_content['content']:
-                tag_name_from_slug = tag_slug.replace('-', ' ').title()
+            if desc_content and desc_content["content"]:
+                tag_name_from_slug = tag_slug.replace("-", " ").title()
                 enriched_content = f"Tag: {tag_name_from_slug}\nDescription:\n{desc_content['content']}"
-                all_descriptions.append(Content(content=enriched_content, vector=desc_content['vector']))
+                all_descriptions.append(Content(content=enriched_content, vector=desc_content["vector"]))
     return all_descriptions
+
 
 # Example of how RAG might be used (conceptual, actual use is in generation prompts)
 def get_relevant_context_for_prompt(
     query_text: str,
-    source_type: str = "articles", # "articles" or "tags"
-    top_k: int = 3
+    source_type: str = "articles",  # "articles" or "tags"
+    top_k: int = 3,
 ) -> str:
     """
     Retrieves relevant context from stored summaries or descriptions.
     This is a helper to build parts of a RAG prompt.
     """
-    from openai_utils import get_embedding # Avoid circular import at top level
+    from paper_reader.openai_utils import get_embedding  # Avoid circular import at top level
 
     query_embedding = get_embedding(query_text)
     if query_embedding is None:
@@ -102,7 +103,8 @@ def get_relevant_context_for_prompt(
     if not similar_items:
         return "No similar content found."
 
-    context_str = "\n\n---\nRelevant Information:\n---\n"
+    context_str = f"\n\n---\nRelevant Information ({source_type}):\n---\n"
     for item in similar_items:
-        context_str += item['content'] + "\n---\n"
+        context_str += item["content"] + "\n---\n"
+
     return context_str
