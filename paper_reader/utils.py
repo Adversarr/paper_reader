@@ -22,6 +22,8 @@ def slugify(text: str) -> str:
     text = text.strip("-")
     return text if text else "untitled"
 
+def human_readable_slugify(text: str) -> str:
+    return text.replace("-", " ").replace("_", " ").title()
 
 def save_text_and_embedding(
     base_path: str,

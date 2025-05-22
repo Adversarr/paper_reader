@@ -21,6 +21,7 @@ def _get_api_base(provider: str) -> str:
     base_urls = {
         "openai": "https://api.openai.com/v1",
         "bailian": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "openrouter": "https://api.openrouter.ai/v1",
     }
     if "BASE_URL" in os.environ:
         base_urls["custom"] = os.environ["BASE_URL"]  # Use custom base URL if provided
@@ -34,11 +35,15 @@ BASE_URL = _get_api_base(PROVIDER)
 OPENAI_API_KEY = os.getenv("API_KEY", "")  # Ensure this is set in your environment variables
 if not OPENAI_API_KEY:
     raise ValueError("API_KEY environment variable must be set.")
-GPT_MODEL_SUMMARIZE = os.getenv("GPT_MODEL_SUMMARIZE", "qwen-turbo-latest")
-GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", "qwen-turbo-latest")
-GPT_MODEL_TAG = os.getenv("GPT_MODEL_TAG", "qwen-turbo-latest")
+# --- Model Configuration ---
+
+# NOTE: These model names are suitable only for bailian api.
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-turbo")
+GPT_MODEL_DEFAULT = os.getenv("GPT_MODEL_DEFAULT", DEFAULT_MODEL)
+GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", DEFAULT_MODEL)
+GPT_MODEL_TAG = os.getenv("GPT_MODEL_TAG", DEFAULT_MODEL)
+GPT_MODEL_LONG = os.getenv("GPT_MODEL_LONG", DEFAULT_MODEL)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
-ASYNC_RUN = False
 
 
 NO_THINK_EXTRA_BODY: dict[str, Any] = {"enable_thinking": False}
@@ -57,33 +62,29 @@ SECTION_SEPARATOR = os.getenv("SECTION_SEPARATOR", "")  # <!-- SEPARATOR -->
 DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "10240"))
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
 DEFAULT_REBUILD = os.getenv("DEFAULT_REBUILD", "True").lower() == "true"
-DEFAULT_THINKING = os.getenv("DEFAULT_THINKING", "True").lower() == "false"
-DEFAULT_STREAM = os.getenv("DEFAULT_STREAM", "False").lower() == "false"
-PREFER_TLDR_TOKENS = int(os.getenv("PREFER_TLDR_TOKENS", "200"))
+DEFAULT_REBUILD_TAGS = os.getenv("DEFAULT_REBUILD_TAGS", str(DEFAULT_REBUILD)).lower() == "true"
+DEFAULT_THINKING = os.getenv("DEFAULT_THINKING", "False").lower() == "true"
+DEFAULT_STREAM = os.getenv("DEFAULT_STREAM", "True").lower() == "true"
 
 ARTICLE_SUMMARY_VERBOSE = os.getenv("ARTICLE_SUMMARY_VERBOSE", "False").lower() == "true"
 ENABLE_RAG_FOR_ARTICLES = os.getenv("ENABLE_RAG_FOR_ARTICLES", "True").lower() == "true"
 
 MAX_TOKENS_SUMMARY = int(os.getenv("MAX_TOKENS_SUMMARY", str(DEFAULT_MAX_TOKENS)))
-MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS = int(os.getenv('MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS', str(int(0.5 * DEFAULT_MAX_TOKENS))))
-MAX_TOKENS_TLDR = int(os.getenv("MAX_TOKENS_TLDR", str(int(1.5 * PREFER_TLDR_TOKENS))))
+MAX_TOKENS_TAG_SURVEY = int(os.getenv("MAX_TOKENS_TAG_SURVEY", str(MAX_TOKENS_SUMMARY)))
+MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS = int(
+    os.getenv("MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS", str(int(0.5 * DEFAULT_MAX_TOKENS)))
+)
+MAX_TOKENS_TLDR = int(os.getenv("MAX_TOKENS_TLDR", "300"))
+MAX_TOKENS_TAGS = int(os.getenv("MAX_TOKENS_TAGS", "300"))
 MAX_TOKENS_TAG_DESCRIPTION = int(os.getenv("MAX_TOKENS_TAG_DESCRIPTION", "1024"))
-MAX_TOKENS_TAG_SURVEY = int(os.getenv("MAX_TOKENS_TAG_SURVEY", str(DEFAULT_MAX_TOKENS)))
+MAX_TOKENS_TAG_ARTICLE = int(os.getenv("MAX_TOKENS_TAG_ARTICLE", "1024"))
+
+# -1 means no async, 0 means unlimited, >0 means limited
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "-1"))
+
 
 # --- Prompts ---
 # Using """...""" for multiline prompts
-
-
-PROMPT_EXTRACT_TAGS = """
-Analyze the following article content and extract relevant keywords (tags).
-These tags should include the problems addressed, core ideas/innovations, techniques/methods used, and any specific tools or frameworks mentioned.
-Provide a comma-separated list of tags. Aim for 5-10 highly relevant tags.
-
-Article Content:
-{text}
-
-Tags (comma-separated):
-"""
 
 PROMPT_TAG_DESCRIPTION = """
 Generate a concise, Wikipedia-like description for the tag: "{tag_name}".

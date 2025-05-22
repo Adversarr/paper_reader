@@ -3,10 +3,10 @@ import os
 from typing import List, Tuple
 from dotenv import load_dotenv
 from paper_reader.article_processor import process_article
-from paper_reader.tag_manager import update_tag_with_article, process_all_tags_iteratively
+from paper_reader.tag_manager import process_all_tags_iteratively
 from paper_reader.models import ArticleSummary
 from paper_reader.config import DOCS_DIR, VAULT_DIR, EXTRACTED_MD_FILE
-from paper_reader.utils import ensure_dir_exists, slugify
+from paper_reader.utils import ensure_dir_exists
 
 def discover_papers() -> List[Tuple[str, str]]:
     """
@@ -60,9 +60,9 @@ def main():
         dummy_extracted_md_path = os.path.join(dummy_paper_path, EXTRACTED_MD_FILE)
         if not os.path.exists(dummy_extracted_md_path):
             with open(dummy_extracted_md_path, "w", encoding='utf-8') as f:
-                f.write(f"# {dummy_paper_title}\n\nThis is an example paper about AI ethics.\n\n"
-                        f"<!-- SEPERATOR -->\n\nSection 2 discusses implications.\n\n"
-                        f"<!-- SEPERATOR -->\n\nSection 3 concludes the findings.")
+                f.write(f"# {dummy_paper_title}\n\nThis is an example paper about AI ethics.\n"
+                        f"\nSection 2 discusses implications.\n"
+                        f"\nSection 3 concludes the findings.")
             print(f"Created a dummy paper for demonstration: {dummy_extracted_md_path}")
             papers_to_process_info.append((dummy_paper_dir_name, dummy_paper_title))
 

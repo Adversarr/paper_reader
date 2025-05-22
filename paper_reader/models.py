@@ -17,7 +17,7 @@ class ArticleSummary(TypedDict):
 
     title: str  # Original title, will be slugified for directory name
     paper_slug: str  # Filesystem-safe name derived from title
-    content_path: str  # Path to extracted.md
+    paper_path: str  # Path to extracted.md
     content: Content  # Original content from extracted.md
     summary: Optional[Content]  # Article-level summary
     tldr: Optional[Content]  # TLDR summary

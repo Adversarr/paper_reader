@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 vault
+raw
 
 # Virtual environments
 .venv
