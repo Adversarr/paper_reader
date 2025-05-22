@@ -129,6 +129,10 @@ async def process_pdf(pdf_path: Path, sem: asyncio.Semaphore):
             )
             output_dir = Path(f"{VAULT_DIR}/docs/{slug}")
             output_dir.mkdir(parents=True, exist_ok=True)
+
+            with open(output_dir / "TITLE", "w") as f:
+                f.write(title)
+
             with open(output_dir / "extracted.md", "w") as f:
                 already_written = 0
                 async for chunk in output:

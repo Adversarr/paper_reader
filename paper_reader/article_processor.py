@@ -1,5 +1,4 @@
-# article_processor.py
-import asyncio
+from json import dumps, loads
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -20,11 +19,7 @@ from paper_reader.config import (
     TLDR_MD_FILE,
 )
 from paper_reader.models import ArticleSummary, Content
-from paper_reader.openai_utils import (
-    generate_completion,
-    # generate_completion,
-    get_embedding,
-)
+from paper_reader.openai_utils import generate_completion, get_embedding
 from paper_reader.prompt_helpers import load_prompt
 from paper_reader.prompts import (
     ARTICLE_SUMMARY_MERGE_PROMPT,
@@ -39,10 +34,7 @@ from paper_reader.utils import (
     save_text_and_embedding,
     slugify,
 )
-from paper_reader.vector_store import (
-    get_relevant_context_for_prompt,
-)  # For potential RAG in summarization
-from json import dumps, loads
+from paper_reader.vector_store import get_relevant_context_for_prompt
 
 
 async def _agenerate_and_save_content_tldr(
@@ -114,11 +106,11 @@ async def _agenerate_and_save_content_article_summary(
 
     _SUMMARY_STAGES = {
         # Explict Chain of Thought.
-        "prelogue": "Generate the introduction part of the paper summary. Fill in the blanks(square bracket). Template: \n\n{text}",
-        "pass1": "Generate your first pass reading summary of the paper. Fill in the blanks(square bracket). Template:\n\n{text}",
-        "pass2": "Generate your second pass reading summary of the paper. Fill in the blanks(square bracket). Template:\n\n{text}",
-        "pass3": "Generate your third pass reading summary of the paper. Fill in the blanks(square bracket). Template:\n\n{text}",
-        "epilogue": "Generate the conclusion part of the paper summary. Fill in the blanks(square bracket). Template: \n\n{text}",
+        "prelogue": "Generate the introduction part of the paper summary. Fill in the blanks(square bracket). Do not include other contents. Template: \n\n{text}",
+        "pass1": "Generate your first pass reading summary of the paper. Fill in the blanks(square bracket). Do not include other contents. Template:\n\n{text}",
+        "pass2": "Generate your second pass reading summary of the paper. Fill in the blanks(square bracket). Do not include other contents. Template:\n\n{text}",
+        "pass3": "Generate your third pass reading summary of the paper. Fill in the blanks(square bracket). Do not include other contents. Template:\n\n{text}",
+        "epilogue": "Generate the conclusion part of the paper summary. Fill in the blanks(square bracket). Do not include other contents. Template: \n\n{text}",
     }
 
     existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
@@ -159,6 +151,7 @@ async def _agenerate_and_save_content_article_summary(
 
     generated_text = await generate_completion(
         prompt=all_prompts,
+        system_prompt=ARTICLE_SUMMARY_SYSTEM,
         max_tokens=MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
         thinking=thinking,
     )
@@ -199,6 +192,7 @@ async def _agenerate_and_save_content_article_summary(
 
         generated_text = await generate_completion(
             all_prompts,
+            system_prompt=ARTICLE_SUMMARY_SYSTEM,
             max_tokens=MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
             thinking=thinking,
         )

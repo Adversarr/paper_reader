@@ -1,6 +1,7 @@
 # config.py
 import os
 from typing import Any
+
 from dotenv import load_dotenv
 from loguru import logger as LOGGER  # noqa: F401
 
@@ -14,7 +15,7 @@ TAGS_DIR = os.path.join(VAULT_DIR, "tags")
 # --- OpenAI API Configuration ---
 # Make sure to set your OPENAI_API_KEY environment variable
 PROVIDER: str = os.getenv("PROVIDER", "bailian")  # type: ignore
-
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", PROVIDER)  # type: ignore
 
 def _get_api_base(provider: str) -> str:
     """Return the API base URL for the given provider."""
@@ -33,13 +34,16 @@ def _get_api_base(provider: str) -> str:
 
 
 BASE_URL = _get_api_base(PROVIDER)
+EMBEDDING_BASE_URL = _get_api_base(EMBEDDING_PROVIDER)
 OPENAI_API_KEY = os.getenv("API_KEY", "")  # Ensure this is set in your environment variables
 if not OPENAI_API_KEY:
     raise ValueError("API_KEY environment variable must be set.")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", OPENAI_API_KEY)  # Ensure this is set in your environment variables
+
 # --- Model Configuration ---
 
 # NOTE: These model names are suitable only for bailian api.
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-turbo")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-plus")
 GPT_MODEL_DEFAULT = os.getenv("GPT_MODEL_DEFAULT", DEFAULT_MODEL)
 GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", DEFAULT_MODEL)
 GPT_MODEL_TAG = os.getenv("GPT_MODEL_TAG", DEFAULT_MODEL)
@@ -81,7 +85,7 @@ MAX_TOKENS_TAG_DESCRIPTION = int(os.getenv("MAX_TOKENS_TAG_DESCRIPTION", "1024")
 MAX_TOKENS_TAG_ARTICLE = int(os.getenv("MAX_TOKENS_TAG_ARTICLE", "1024"))
 
 # -1 means no async, 0 means unlimited, >0 means limited
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "4"))
 
 
 # --- Prompts ---

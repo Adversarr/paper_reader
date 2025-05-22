@@ -1,9 +1,16 @@
 # openai_utils.py
 import asyncio
+from asyncio import Semaphore
 from typing import List, Optional
 
 import numpy as np
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI, OpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AsyncOpenAI,
+    OpenAI,
+    RateLimitError,
+)
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -14,6 +21,8 @@ from paper_reader.config import (
     DEFAULT_STREAM,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TEMPERATURE,
+    EMBEDDING_API_KEY,
+    EMBEDDING_BASE_URL,
     EMBEDDING_MODEL,
     GPT_MODEL_DEFAULT,
     LOGGER,
@@ -23,12 +32,11 @@ from paper_reader.config import (
     THINK_EXTRA_BODY,
 )
 
-from asyncio import Semaphore
-
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable not set.")
 
 client = OpenAI(api_key=OPENAI_API_KEY, base_url=BASE_URL)
+client_embedding = OpenAI(api_key=EMBEDDING_API_KEY, base_url=EMBEDDING_BASE_URL)
 aclient = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=BASE_URL)
 
 # use 10000 as unlimited
@@ -50,7 +58,7 @@ def get_embedding(text: str, model: str = EMBEDDING_MODEL) -> Optional[np.ndarra
         return None
     try:
         text = text.replace("\n", " ")  # API recommendation
-        response = client.embeddings.create(input=[text], model=model)
+        response = client_embedding.embeddings.create(input=[text], model=model)
         return np.array(response.data[0].embedding)
     except (APIConnectionError, RateLimitError, APIStatusError, Exception) as e:
         print(f"Error getting embedding: {e}")
@@ -98,8 +106,8 @@ def generate_completion_streaming(
         # Create markdown prelogue with messages
         md_prelogue = "# Prompts\n\n"
         for i, message in enumerate(messages):
-            if len(message["content"]) > 20:
-                short_content = message["content"][:10] + "..." + message["content"][-10:]
+            if len(message["content"]) > 60:
+                short_content = message["content"][:30] + "..." + message["content"][-30:]
             else:
                 short_content = message["content"]
             short_content = short_content.replace("\n", "\\n")

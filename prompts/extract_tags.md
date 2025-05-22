@@ -30,6 +30,10 @@
     *   Do not focus on terms that occur frequently if they are likely internal project names, novel acronyms not yet widely adopted, or paper-specific module names.
     *   *Instead of*: "Masked Anchored Spherical Distances", "Flowfixer", "MASH", "OurCustomModule".
     *   *Prefer*: General terms describing the underlying techniques or problem domain.
+4.  **Long Tags or Phrases**:
+    *   Avoid overly long tags or phrases that are difficult to generalize.
+    *   *Instead of*: "XXX based YYY"
+    *   *Prefer*: "XXX", "YYY"
 
 ### Examples
 
