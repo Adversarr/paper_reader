@@ -1,4 +1,5 @@
 # article_processor.py
+import asyncio
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -10,7 +11,6 @@ from paper_reader.config import (
     DOCS_DIR,
     ENABLE_RAG_FOR_ARTICLES,
     EXTRACTED_MD_FILE,
-    GPT_MODEL_FAST,
     GPT_MODEL_LONG,
     LOGGER,
     MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
@@ -20,7 +20,11 @@ from paper_reader.config import (
     TLDR_MD_FILE,
 )
 from paper_reader.models import ArticleSummary, Content
-from paper_reader.openai_utils import generate_completion, get_embedding
+from paper_reader.openai_utils import (
+    generate_completion,
+    # generate_completion,
+    get_embedding,
+)
 from paper_reader.prompt_helpers import load_prompt
 from paper_reader.prompts import (
     ARTICLE_SUMMARY_MERGE_PROMPT,
@@ -41,7 +45,7 @@ from paper_reader.vector_store import (
 from json import dumps, loads
 
 
-def _generate_and_save_content_tldr(
+async def _agenerate_and_save_content_tldr(
     text: str,
     output_dir: str,
     output_filename_md: str,
@@ -51,7 +55,9 @@ def _generate_and_save_content_tldr(
 ) -> Optional[Content]:
     """Helper to generate, embed, and save a piece of content."""
     existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
-    if existing_content_obj and not force_rebuild:  # Check if we can reuse existing content
+    if (
+        existing_content_obj and not force_rebuild
+    ):  # Check if we can reuse existing content
         print(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
 
@@ -61,15 +67,25 @@ def _generate_and_save_content_tldr(
     rag_ctx = ""
     if rag_query_for_prompt:
         # Example: get context from other article summaries
-        rag_ctx = get_relevant_context_for_prompt(rag_query_for_prompt, source_type="articles", top_k=2)
+        rag_ctx = get_relevant_context_for_prompt(
+            rag_query_for_prompt, source_type="articles", top_k=2
+        )
 
     system_prompt = TLDR_SUMMARY_SYSTEM
     all_prompts: list = []
-    all_prompts.append(create_message_entry("user", "<-- This is the Article Summary -->\n\n{text}", text=text))
+    all_prompts.append(
+        create_message_entry(
+            "user", "<-- This is the Article Summary -->\n\n{text}", text=text
+        )
+    )
     if rag_ctx:
-        all_prompts.append(create_message_entry("user", "<-- This is the RAG Context -->\n\n{text}", text=rag_ctx))
+        all_prompts.append(
+            create_message_entry(
+                "user", "<-- This is the RAG Context -->\n\n{text}", text=rag_ctx
+            )
+        )
 
-    generated_text = generate_completion(
+    generated_text = await generate_completion(
         prompt=all_prompts,
         system_prompt=system_prompt,
         max_tokens=max_tokens,
@@ -80,11 +96,13 @@ def _generate_and_save_content_tldr(
         return None
 
     embedding_vector = get_embedding(generated_text)
-    save_text_and_embedding(output_dir, output_filename_md, generated_text, embedding_vector)
+    save_text_and_embedding(
+        output_dir, output_filename_md, generated_text, embedding_vector
+    )
     return Content(content=generated_text, vector=embedding_vector)
 
 
-def _generate_and_save_content_article_summary(
+async def _agenerate_and_save_content_article_summary(
     text_to_process: str,
     output_dir: str,
     output_filename_md: str,
@@ -104,7 +122,9 @@ def _generate_and_save_content_article_summary(
     }
 
     existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
-    if existing_content_obj and not force_rebuild:  # Check if we can reuse existing content
+    if (
+        existing_content_obj and not force_rebuild
+    ):  # Check if we can reuse existing content
         print(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
     all_prompts = [
@@ -137,7 +157,7 @@ def _generate_and_save_content_article_summary(
     # store all generated text
     all_generated = []
 
-    generated_text = generate_completion(
+    generated_text = await generate_completion(
         prompt=all_prompts,
         max_tokens=MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
         thinking=thinking,
@@ -157,7 +177,9 @@ def _generate_and_save_content_article_summary(
     # RAG: Augment prompt with relevant context if query is provided
     if ENABLE_RAG_FOR_ARTICLES:
         # Example: get context from other article summaries
-        rag_context = get_relevant_context_for_prompt(generated_text, source_type="articles")
+        rag_context = get_relevant_context_for_prompt(
+            generated_text, source_type="articles"
+        )
         rag_context += "\n\n"
         rag_context += get_relevant_context_for_prompt(generated_text, "tags")
         all_prompts.append(create_message_entry(role="user", template=rag_context))
@@ -175,7 +197,7 @@ def _generate_and_save_content_article_summary(
         all_prompts.append(instruct_prompt)
         LOGGER.info(f"=> Generate {stage}")
 
-        generated_text = generate_completion(
+        generated_text = await generate_completion(
             all_prompts,
             max_tokens=MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
             thinking=thinking,
@@ -195,7 +217,7 @@ def _generate_and_save_content_article_summary(
     all_generated.append(merge_prompt)
 
     LOGGER.info("=> Merge summaries")
-    generated_text = generate_completion(
+    generated_text = await generate_completion(
         all_generated,
         ARTICLE_SUMMARY_SYSTEM,
         model=GPT_MODEL_LONG,
@@ -207,23 +229,29 @@ def _generate_and_save_content_article_summary(
 
     ####################### save the final summary
     embedding_vector = get_embedding(generated_text)
-    save_text_and_embedding(output_dir, output_filename_md, generated_text, embedding_vector)
+    save_text_and_embedding(
+        output_dir, output_filename_md, generated_text, embedding_vector
+    )
     LOGGER.info(f'Done. Saved to "{output_dir}/{output_filename_md}"')
     if ARTICLE_SUMMARY_VERBOSE:
         print("#" * 50 + "Generated Summary Full:\n" + generated_text + "\n" + "#" * 50)
     return Content(content=generated_text, vector=embedding_vector)
 
 
-def generate_tags(
+async def agenerate_tags(
     text: str,
     previous_tags: Optional[List[str]] = None,
     thinking: bool = DEFAULT_THINKING,
 ) -> List[str]:
     all_prompts = [
-        create_message_entry("user", "<!-- This is previous generate tags --> {content}", content=previous_tags),
+        create_message_entry(
+            "user",
+            "<!-- This is previous generate tags --> {content}",
+            content=previous_tags,
+        ),
         create_message_entry("user", text),
     ]
-    tags_string = generate_completion(
+    tags_string = await generate_completion(
         prompt=all_prompts,
         system_prompt=EXTRACT_TAGS_SYSTEM,
         max_tokens=MAX_TOKENS_TAGS,
@@ -231,7 +259,9 @@ def generate_tags(
     )
     tags_list: List[str] = []
     if tags_string:
-        tags_list = [slugify(tag.strip()) for tag in tags_string.split(",") if tag.strip()]
+        tags_list = [
+            slugify(tag.strip()) for tag in tags_string.split(",") if tag.strip()
+        ]
         print(f"  Extracted tags: {tags_list}")
     else:
         print("  Failed to extract tags.")
@@ -239,18 +269,25 @@ def generate_tags(
     return tags_list
 
 
-def process_article(paper_directory_name: str, article_title: str) -> Optional[ArticleSummary]:
+async def aprocess_article(
+    paper_directory_name: str,
+    article_title: str,
+) -> Optional[ArticleSummary]:
     """
     Processes a single article: loads extracted content, generates summaries,
     TLDR, section summaries, and extracts tags. Saves all outputs.
     `paper_directory_name` is the actual directory name on disk (e.g., "paper1").
     `article_title` is the human-readable title used for slugification if needed.
+    `semaphore` is used to limit concurrent processing.
     """
     print(f"\nProcessing article: {article_title} in directory {paper_directory_name}")
-    paper_slug = slugify(article_title)  # This should match paper_directory_name if generated by this system
-    paper_path = os.path.join(DOCS_DIR, paper_directory_name)  # Use the provided directory name
-    print(f"Paper path: {paper_path}")
-    print(f"Paper slug: {paper_slug}")
+    paper_slug = slugify(
+        article_title
+    )  # This should match paper_directory_name if generated by this system
+    paper_path = os.path.join(
+        DOCS_DIR, paper_directory_name
+    )  # Use the provided directory name
+    print(f"Paper path: {paper_path} - " + f"slug: {paper_slug}")
 
     if paper_directory_name != paper_slug:
         # Rename the directory to match the slugified name
@@ -271,10 +308,14 @@ def process_article(paper_directory_name: str, article_title: str) -> Optional[A
                 raw_text = f.read()
             print(f"Found {EXTRACTED_MD_FILE}, generating its embedding...")
             embedding_vector = get_embedding(raw_text)
-            save_text_and_embedding(paper_path, EXTRACTED_MD_FILE, raw_text, embedding_vector)  # This saves .npz
+            save_text_and_embedding(
+                paper_path, EXTRACTED_MD_FILE, raw_text, embedding_vector
+            )  # This saves .npz
             extracted_content_obj = Content(content=raw_text, vector=embedding_vector)
         else:
-            print(f"Error: {EXTRACTED_MD_FILE} not found in {paper_path}. Skipping article.")
+            print(
+                f"Error: {EXTRACTED_MD_FILE} not found in {paper_path}. Skipping article."
+            )
             return None
 
     raw_text = extracted_content_obj["content"]
@@ -283,22 +324,25 @@ def process_article(paper_directory_name: str, article_title: str) -> Optional[A
     # For iterative improvement, we could load an existing summary and pass it to the prompt.
     # Here, we just check if the file exists.
     existing_summary_obj = load_text_and_embedding(paper_path, SUMMARIZED_MD_FILE)
-    previous_summary_text = existing_summary_obj["content"] if existing_summary_obj else "N/A"
+    previous_summary_text = (
+        existing_summary_obj["content"] if existing_summary_obj else "N/A"
+    )
 
-    summary_obj = _generate_and_save_content_article_summary(
+    summary_obj = await _agenerate_and_save_content_article_summary(
         text_to_process=raw_text,
         output_dir=paper_path,
         output_filename_md=SUMMARIZED_MD_FILE,
         previous_content_for_prompt=previous_summary_text,
     )
     if summary_obj is None:
-        print(f"Error generating summary for {paper_path}. Skipping further processing.")
+        print(
+            f"Error generating summary for {paper_path}. Skipping further processing."
+        )
         return None
 
     # 3. Generate TLDR summary
-    tldr_obj = _generate_and_save_content_tldr(
+    tldr_obj = await _agenerate_and_save_content_tldr(
         text=summary_obj["content"],  # Use the generated summary for TLDR
-        # text_to_process=raw_text,  # Or use summary_obj['content'] for TLDR from summary
         output_dir=paper_path,
         output_filename_md=TLDR_MD_FILE,
         max_tokens=MAX_TOKENS_TLDR,
@@ -318,7 +362,7 @@ def process_article(paper_directory_name: str, article_title: str) -> Optional[A
         with open(tag_json_path, "r", encoding="utf-8") as f:
             prev_tags_list = loads(f.read())
     if DEFAULT_REBUILD or prev_tags_list is None:
-        tags_list = generate_tags(
+        tags_list = await agenerate_tags(
             text=summary_obj["content"],
             previous_tags=prev_tags_list,
             thinking=False,
@@ -345,5 +389,4 @@ def process_article(paper_directory_name: str, article_title: str) -> Optional[A
     # One could save this TypedDict as a JSON file in paper_path for easy loading.
     # e.g., with open(os.path.join(paper_path, "article_summary_meta.json"), "w") as f:
     #    json.dump(article_data, f, indent=2, cls=NumpyEncoder) # Needs a NumpyEncoder for ndarray
-
     return article_data

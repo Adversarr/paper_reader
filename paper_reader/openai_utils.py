@@ -206,6 +206,16 @@ async def agenerate_completion_streaming(
     temperature: float = DEFAULT_TEMPERATURE,
     thinking: bool = False,
 ) -> str | None:
+    if MAX_CONCURRENT == 1:
+        return generate_completion_streaming(
+            prompt,
+            system_prompt,
+            model,
+            max_tokens,
+            temperature,
+            thinking,
+        )
+
     messages = [{"role": "system", "content": system_prompt}]
 
     if isinstance(prompt, str):
@@ -230,7 +240,10 @@ async def agenerate_completion_streaming(
                 stream=True,
                 extra_body=extra_body,
                 stream_options={"include_usage": True},
+                n=1,
             ):
+                if not chunk.choices:
+                    continue
                 delta = chunk.choices[0].delta
                 if thinking and hasattr(delta, "reasoning_content") and delta.reasoning_content:
                     reasoning_content += delta.reasoning_content
@@ -247,54 +260,10 @@ async def agenerate_completion_streaming(
             "thinking": thinking,
         }
         LOGGER.error(f"Error generating completion: {e}\nCall params: {call_params}")
-
         return None
 
 
-def generate_completion(
-    prompt: str | List,
-    system_prompt: str =DEFAULT_SYSTEM_PROMPT,
-    model: str = GPT_MODEL_DEFAULT,
-    max_tokens: int | None = None,
-    temperature: float = DEFAULT_TEMPERATURE,
-    thinking=False,  # Add this line to include the thinking parameter
-    stream: bool = DEFAULT_STREAM,
-) -> Optional[str]:
-    """Generates a text completion using OpenAI Chat API."""
-    if stream or thinking:
-        return generate_completion_streaming(prompt, system_prompt, model, max_tokens, temperature, thinking)
-    try:
-        messages = [
-            {"role": "system", "content": system_prompt},
-        ]
-        if isinstance(prompt, str):
-            messages = messages + [{"role": "user", "content": prompt}]
-        else:
-            messages = messages + prompt
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,  # type: ignore
-            max_tokens=max_tokens,
-            temperature=temperature,
-            n=1,
-            stop=None,
-            stream=False,
-            extra_body=NO_THINK_EXTRA_BODY,
-        )
-        return response.choices[0].message.content.strip()
-
-    except (APIConnectionError, RateLimitError, APIStatusError, Exception) as e:
-        call_params = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "thinking": thinking,
-        }
-        LOGGER.error(f"Error generating completion: {e}\nCall params: {call_params}")
-        return None
-
-
-async def agenerate_completion(
+async def generate_completion(
     prompt: str | List,
     system_prompt=DEFAULT_SYSTEM_PROMPT,
     model: str = GPT_MODEL_DEFAULT,

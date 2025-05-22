@@ -1,7 +1,7 @@
 # config.py
 import os
 from typing import Any
-from dotenv import dotenv_values, load_dotenv
+from dotenv import load_dotenv
 from loguru import logger as LOGGER  # noqa: F401
 
 load_dotenv()
@@ -22,7 +22,7 @@ def _get_api_base(provider: str) -> str:
         "openai": "https://api.openai.com/v1",
         "bailian": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "openrouter": "https://api.openrouter.ai/v1",
-        'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
+        "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
     }
     if "BASE_URL" in os.environ:
         base_urls["custom"] = os.environ["BASE_URL"]  # Use custom base URL if provided
@@ -81,10 +81,24 @@ MAX_TOKENS_TAG_DESCRIPTION = int(os.getenv("MAX_TOKENS_TAG_DESCRIPTION", "1024")
 MAX_TOKENS_TAG_ARTICLE = int(os.getenv("MAX_TOKENS_TAG_ARTICLE", "1024"))
 
 # -1 means no async, 0 means unlimited, >0 means limited
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "-1"))
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
 
 
 # --- Prompts ---
 # Using """...""" for multiline prompts
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
+
+PROMPT_TAG_DESCRIPTION = """
+Generate a concise, Wikipedia-like description for the tag: "{tag_name}".
+The description should explain what this tag represents, its core concepts, and potentially its significance or common applications.
+You can use the following related article summaries for context.
+
+Related Article Summaries:
+{related_article_summaries}
+
+Previous Description (if any, for context and iterative improvement):
+{previous_description}
+
+Description for "{tag_name}":
+"""
