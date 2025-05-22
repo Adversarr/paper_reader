@@ -22,6 +22,7 @@ def _get_api_base(provider: str) -> str:
         "openai": "https://api.openai.com/v1",
         "bailian": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "openrouter": "https://api.openrouter.ai/v1",
+        'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
     }
     if "BASE_URL" in os.environ:
         base_urls["custom"] = os.environ["BASE_URL"]  # Use custom base URL if provided
@@ -59,7 +60,7 @@ TAG_SURVEY_MD_FILE = "survey.md"
 
 # --- Other Constants ---
 SECTION_SEPARATOR = os.getenv("SECTION_SEPARATOR", "")  # <!-- SEPARATOR -->
-DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "10240"))
+DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "16384"))
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
 DEFAULT_REBUILD = os.getenv("DEFAULT_REBUILD", "True").lower() == "true"
 DEFAULT_REBUILD_TAGS = os.getenv("DEFAULT_REBUILD_TAGS", str(DEFAULT_REBUILD)).lower() == "true"
@@ -85,38 +86,5 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "-1"))
 
 # --- Prompts ---
 # Using """...""" for multiline prompts
-
-PROMPT_TAG_DESCRIPTION = """
-Generate a concise, Wikipedia-like description for the tag: "{tag_name}".
-The description should explain what this tag represents, its core concepts, and potentially its significance or common applications.
-You can use the following related article summaries for context.
-
-Related Article Summaries:
-{related_article_summaries}
-
-Previous Description (if any, for context and iterative improvement):
-{previous_description}
-
-Description for "{tag_name}":
-"""
-
-PROMPT_TAG_SURVEY = """
-Create a survey for the tag: "{tag_name}".
-This survey should briefly introduce the topic represented by the tag and then list and summarize the key contributions of the following related articles.
-Focus on how each article relates to the tag.
-
-Tag Name: {tag_name}
-
-Tag Description (for context):
-{tag_description}
-
-Related Articles (Title and Summary):
-{related_articles_info}
-
-Previous Survey (if any, for context and iterative improvement):
-{previous_survey}
-
-Survey for "{tag_name}":
-"""
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."

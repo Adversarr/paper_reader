@@ -13,26 +13,19 @@ from paper_reader.utils import (
     load_text_and_embedding,
 )
 from paper_reader.config import (
-    DEFAULT_REBUILD,
     DEFAULT_REBUILD_TAGS,
     GPT_MODEL_DEFAULT,
     GPT_MODEL_FAST,
-    GPT_MODEL_TAG,
     MAX_TOKENS_TAG_ARTICLE,
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
     TAG_SURVEY_MD_FILE,
-    PROMPT_TAG_DESCRIPTION,
-    PROMPT_TAG_SURVEY,
     MAX_TOKENS_TAG_DESCRIPTION,
-    MAX_TOKENS_TAG_SURVEY,
     DOCS_DIR,
     SUMMARIZED_MD_FILE,
     LOGGER,
-    VAULT_DIR,
 )
 from paper_reader.openai_utils import get_embedding, generate_completion
-from paper_reader.vector_store import get_relevant_context_for_prompt  # For RAG
 
 # Global store for tags (in-memory, could be persisted to a JSON file)
 # Maps tag_slug to TagInfo
