@@ -14,3 +14,4 @@ raw_*
 # Virtual environments
 .venv
 .env
+output

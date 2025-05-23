@@ -176,7 +176,7 @@ class PDFExtractor:
 
                     # Log progress every 1000 characters
                     if last_written // 1000 < written_chars // 1000:
-                        LOGGER.info(f"Writing progress: {written_chars} chars to {output_file.name}")
+                        LOGGER.info(f"Writing progress: {written_chars} chars to {output_file}")
 
     def _create_output_directory(self, slug: str) -> Path:
         """Create and return output directory path."""
