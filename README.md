@@ -69,5 +69,5 @@ You will see the outputs in the `vault` directory.
 To read and summarize the papers, use the following command:
 
 ```sh
-$ MAX_CONCURRENT=4 DEFAULT_REBUILD=false MODEL_DEFAULT=qwen-plus MODEL_FAST=qwen-turbo MODEL_INSTRUCT=qwen2.5-32b-instruct python main.py
+$ MAX_CONCURRENT=4 REBUILD_ALL=false MODEL_DEFAULT=qwen-plus MODEL_FAST=qwen-turbo MODEL_INSTRUCT=qwen2.5-32b-instruct python main.py
 ```

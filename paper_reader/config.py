@@ -1,9 +1,18 @@
 # config.py
 import os
+import sys
 from typing import Any
 
 from dotenv import load_dotenv
 from loguru import logger as LOGGER  # noqa: F401
+
+_custom_format = (
+    "<green>{time: HH:mm:ss}</green> | "
+    "<level>{level: <5}</level> | "
+    "<level>{message}</level>"
+)
+LOGGER.remove()
+LOGGER.add(sink=sys.stdout, format=_custom_format, level="DEBUG" if os.getenv("DEBUG") else "INFO")
 
 load_dotenv()
 
@@ -18,19 +27,30 @@ PROVIDER: str = os.getenv("PROVIDER", "bailian")  # type: ignore
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", PROVIDER)  # type: ignore
 
 def _get_api_base(provider: str) -> str:
-    """Return the API base URL for the given provider."""
-    base_urls = {
-        "openai": "https://api.openai.com/v1",
-        "bailian": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "openrouter": "https://api.openrouter.ai/v1",
-        "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
-    }
-    if "BASE_URL" in os.environ:
-        base_urls["custom"] = os.environ["BASE_URL"]  # Use custom base URL if provided
-    provider = provider.lower()
-    if provider not in base_urls:
-        raise ValueError(f"Unknown provider: {provider}.")
-    return base_urls[provider]
+    """Return the API base URL based on the provider name."""
+    if provider == "openai":
+        return "https://api.openai.com/v1"
+    elif provider == "bailian":
+        return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    elif provider == "azure":
+        return os.getenv("AZURE_API_BASE", "")
+    elif provider == "minimax":
+        return "https://api.minimax.chat/v1"
+    elif provider == "anthropic":
+        return "https://api.anthropic.com/v1"
+    elif provider == "ollama":
+        return os.getenv("OLLAMA_API_BASE", "http://localhost:11434/api")
+    elif provider == 'volcengine':
+        return "https://ark.cn-beijing.volces.com/api/v3"
+    elif provider == "openrouter":
+        return "https://api.openrouter.ai/v1"
+    elif provider == "custom":
+        custom_base = os.getenv("CUSTOM_API_BASE", "")
+        if not custom_base:
+            raise ValueError("CUSTOM_API_BASE environment variable not set for custom provider")
+        return custom_base
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
 
 
 BASE_URL = _get_api_base(PROVIDER)
@@ -66,9 +86,9 @@ TAG_SURVEY_MD_FILE = "survey.md"
 SECTION_SEPARATOR = os.getenv("SECTION_SEPARATOR", "")  # <!-- SEPARATOR -->
 DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "16384"))
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
-DEFAULT_REBUILD = os.getenv("DEFAULT_REBUILD", "True").lower() == "true"
-DEFAULT_REBUILD_TAGS = os.getenv("DEFAULT_REBUILD_TAGS", str(DEFAULT_REBUILD)).lower() == "true"
-DEFAULT_THINKING = os.getenv("DEFAULT_THINKING", "False").lower() == "true"
+REBUILD_ALL = os.getenv("REBUILD_ALL", "True").lower() == "true"
+REBUILD_ALL_TAGS = os.getenv("REBUILD_ALL_TAGS", str(REBUILD_ALL)).lower() == "true"
+ENABLE_THINKING = os.getenv("ENABLE_THINKING", "False").lower() == "true"
 DEFAULT_STREAM = os.getenv("DEFAULT_STREAM", "True").lower() == "true"
 
 ARTICLE_SUMMARY_VERBOSE = os.getenv("ARTICLE_SUMMARY_VERBOSE", "False").lower() == "true"

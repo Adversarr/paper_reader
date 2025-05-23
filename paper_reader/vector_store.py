@@ -1,8 +1,8 @@
 # vector_store.py
-import numpy as np
 import os
-from typing import List, Tuple, Optional
-from paper_reader.models import Content, ArticleSummary, TagInfo
+import numpy as np
+from typing import List, Optional
+from paper_reader.models import Content
 from paper_reader.utils import load_text_and_embedding
 from paper_reader.config import DOCS_DIR, TAGS_DIR, SUMMARIZED_MD_FILE, TAG_DESCRIPTION_MD_FILE
 
@@ -46,12 +46,9 @@ def load_all_article_summaries_for_rag() -> List[Content]:
     for paper_slug in os.listdir(DOCS_DIR):
         paper_dir = os.path.join(DOCS_DIR, paper_slug)
         if os.path.isdir(paper_dir):
-            summary_content = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
-            if summary_content and summary_content["content"]:  # Ensure content is not empty
-                # Add title information for better context in RAG prompts
-                title_from_slug = paper_slug.replace("-", " ").title()
-                enriched_content = f"Article Title: {title_from_slug}\nSummary:\n{summary_content['content']}"
-                all_summaries.append(Content(content=enriched_content, vector=summary_content["vector"]))
+            summary = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
+            if summary:
+                all_summaries.append(summary)
     return all_summaries
 
 
@@ -63,11 +60,9 @@ def load_all_tag_descriptions_for_rag() -> List[Content]:
     for tag_slug in os.listdir(TAGS_DIR):
         tag_dir = os.path.join(TAGS_DIR, tag_slug)
         if os.path.isdir(tag_dir):
-            desc_content = load_text_and_embedding(tag_dir, TAG_DESCRIPTION_MD_FILE)
-            if desc_content and desc_content["content"]:
-                tag_name_from_slug = tag_slug.replace("-", " ").title()
-                enriched_content = f"Tag: {tag_name_from_slug}\nDescription:\n{desc_content['content']}"
-                all_descriptions.append(Content(content=enriched_content, vector=desc_content["vector"]))
+            description = load_text_and_embedding(tag_dir, TAG_DESCRIPTION_MD_FILE)
+            if description:
+                all_descriptions.append(description)
     return all_descriptions
 
 
