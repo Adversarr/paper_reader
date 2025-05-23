@@ -2,9 +2,10 @@ import asyncio
 import os
 import shutil
 from pathlib import Path
+import traceback
 from typing import List, Optional, Tuple
 
-from paper_reader.config import MODEL_LONG, PROVIDER, VAULT_DIR, LOGGER
+from paper_reader.config import MAX_CONCURRENT, MODEL_LONG, PROVIDER, VAULT_DIR, LOGGER
 from paper_reader.openai_utils import aclient
 from paper_reader.prompts import load_prompt
 from paper_reader.utils import slugify
@@ -18,6 +19,7 @@ class PDFExtractor:
         self.sys_prompt = load_prompt("prompts/pdf_extractor.md")
         self.temperature = float(os.getenv("EXTRACTOR_TEMPERATURE", "0.2"))  # Fixed typo
         self.model = os.getenv("EXTRACTOR_MODEL", MODEL_LONG)
+        self.semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
     @staticmethod
     def _get_required_env(var_name: str) -> str:
@@ -44,25 +46,27 @@ class PDFExtractor:
 
     async def _upload_file(self, pdf_path: Path) -> str:
         """Upload PDF file and return file ID."""
-        file_object = await aclient.files.create(
-            file=pdf_path,
-            purpose="file-extract", # type: ignore
-        )
+        async with self.semaphore:
+            file_object = await aclient.files.create(
+                file=pdf_path,
+                purpose="file-extract", # type: ignore
+            )
         return file_object.id
 
     async def _extract_title(self, file_id: str) -> str:
         """Extract paper title from PDF."""
-        response = await aclient.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "system", "content": f"fileid://{file_id}"},
-                {"role": "user", "content": self.naming_prompt},
-            ],
-            temperature=0.2,
-            stream=False,
-            n=1,
-        )
+        async with self.semaphore:
+            response = await aclient.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "system", "content": f"fileid://{file_id}"},
+                    {"role": "user", "content": self.naming_prompt},
+                ],
+                temperature=0.2,
+                stream=False,
+                n=1,
+            )
 
         content = response.choices[0].message.content
         if not content:
@@ -71,19 +75,20 @@ class PDFExtractor:
 
     async def _extract_title_and_abstract(self, file_id: str) -> str:
         """Extract title and abstract from PDF."""
-        response = await aclient.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.sys_prompt},
-                {"role": "system", "content": f"fileid://{file_id}"},
-                {
-                    "role": "user",
-                    "content": "Give me the text content of the pdf. (just the title and abstract)",
-                },
-            ],
-            stream=False,
-            temperature=0.2,
-        )
+        async with self.semaphore:
+            response = await aclient.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.sys_prompt},
+                    {"role": "system", "content": f"fileid://{file_id}"},
+                    {
+                        "role": "user",
+                        "content": "Give me the text content of the pdf. (just the title and abstract)",
+                    },
+                ],
+                stream=False,
+                temperature=0.2,
+            )
 
         content = response.choices[0].message.content
         if not content:
@@ -98,19 +103,20 @@ class PDFExtractor:
 
     async def _extract_last_section(self, file_id: str) -> str:
         """Extract last section/paragraph from PDF."""
-        response = await aclient.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.sys_prompt},
-                {"role": "system", "content": f"fileid://{file_id}"},
-                {
-                    "role": "user",
-                    "content": "Give me the last paragraph or section of the pdf. (If appendix exists, it should be the appendix section, otherwise, its likely to be the conclusion section)",
-                },
-            ],
-            stream=False,
-            temperature=0.2,
-        )
+        async with self.semaphore:
+            response = await aclient.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.sys_prompt},
+                    {"role": "system", "content": f"fileid://{file_id}"},
+                    {
+                        "role": "user",
+                        "content": "Give me the last paragraph or section of the pdf. (If appendix exists, it should be the appendix section, otherwise, its likely to be the conclusion section)",
+                    },
+                ],
+                stream=False,
+                temperature=0.2,
+            )
 
         content = response.choices[0].message.content
         if not content:
@@ -152,31 +158,32 @@ class PDFExtractor:
         """Extract main content and stream to file."""
         prompt = self._create_main_pages_prompt(title_and_abstract, last_section)
 
-        response = await aclient.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.sys_prompt},
-                {"role": "system", "content": f"fileid://{file_id}"},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=self.temperature,
-            stream=True,
-            n=1,
-        )
+        async with self.semaphore:
+            response = await aclient.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.sys_prompt},
+                    {"role": "system", "content": f"fileid://{file_id}"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=self.temperature,
+                stream=True,
+                n=1,
+            )
 
-        written_chars = 0
-        with open(output_file, "w", encoding="utf-8") as f:
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    f.write(content)
+            written_chars = 0
+            with open(output_file, "w", encoding="utf-8") as f:
+                async for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        f.write(content)
 
-                    last_written = written_chars
-                    written_chars += len(content)
+                        last_written = written_chars
+                        written_chars += len(content)
 
-                    # Log progress every 1000 characters
-                    if last_written // 1000 < written_chars // 1000:
-                        LOGGER.info(f"Writing progress: {written_chars} chars to {output_file}")
+                        # Log progress every 1000 characters
+                        if last_written // 1000 < written_chars // 1000:
+                            LOGGER.info(f"Writing progress: {written_chars} chars to {output_file}")
 
     def _create_output_directory(self, slug: str) -> Path:
         """Create and return output directory path."""
@@ -230,6 +237,7 @@ class PDFExtractor:
 
         except Exception as e:
             LOGGER.error(f"Error processing {pdf_path}: {e}", exc_info=True)
+            traceback.print_exc()
             return None
 
     def _get_pdf_files(self) -> List[Path]:
