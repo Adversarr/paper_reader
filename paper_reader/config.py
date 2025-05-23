@@ -54,6 +54,8 @@ def _get_api_base(provider: str) -> str:
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
+print(f"Using provider: {PROVIDER}")
+print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 
 BASE_URL = _get_api_base(PROVIDER)
 EMBEDDING_BASE_URL = _get_api_base(EMBEDDING_PROVIDER)

@@ -238,7 +238,7 @@ class PDFExtractor:
         if not raw_dir.exists():
             raise FileNotFoundError(f"Raw directory not found: {raw_dir}")
 
-        pdf_files = list(raw_dir.glob("*.pdf"))
+        pdf_files = list(raw_dir.rglob("*.pdf"))
         LOGGER.info(f"Found {len(pdf_files)} PDF files to process")
         return pdf_files
 
