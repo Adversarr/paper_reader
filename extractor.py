@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from paper_reader.config import MAX_CONCURRENT, MODEL_LONG, PROVIDER, VAULT_DIR, LOGGER
+from paper_reader.config import MODEL_LONG, PROVIDER, VAULT_DIR, LOGGER
 from paper_reader.openai_utils import aclient
 from paper_reader.prompts import load_prompt
 from paper_reader.utils import slugify
@@ -16,11 +16,8 @@ class PDFExtractor:
     def __init__(self):
         self.raw_dir = self._get_required_env("RAW_DIR")
         self.sys_prompt = load_prompt("prompts/pdf_extractor.md")
-        self.temperature = float(
-            os.getenv("EXTRACTOR_TEMPERATURE", "0.2")
-        )  # Fixed typo
+        self.temperature = float(os.getenv("EXTRACTOR_TEMPERATURE", "0.2"))  # Fixed typo
         self.model = os.getenv("EXTRACTOR_MODEL", MODEL_LONG)
-        self.max_concurrent = MAX_CONCURRENT if MAX_CONCURRENT > 0 else 8
 
     @staticmethod
     def _get_required_env(var_name: str) -> str:
@@ -49,7 +46,7 @@ class PDFExtractor:
         """Upload PDF file and return file ID."""
         file_object = await aclient.files.create(
             file=pdf_path,
-            purpose="file-extract",
+            purpose="file-extract", # type: ignore
         )
         return file_object.id
 
@@ -124,9 +121,7 @@ class PDFExtractor:
 
         return content.strip()
 
-    def _create_main_pages_prompt(
-        self, title_and_abstract: str, last_section: str
-    ) -> str:
+    def _create_main_pages_prompt(self, title_and_abstract: str, last_section: str) -> str:
         """Create prompt for extracting main pages."""
         return f"""
         You are going to extract the main pages.
@@ -181,9 +176,7 @@ class PDFExtractor:
 
                     # Log progress every 1000 characters
                     if last_written // 1000 < written_chars // 1000:
-                        LOGGER.info(
-                            f"Writing progress: {written_chars} chars to {output_file.name}"
-                        )
+                        LOGGER.info(f"Writing progress: {written_chars} chars to {output_file.name}")
 
     def _create_output_directory(self, slug: str) -> Path:
         """Create and return output directory path."""
@@ -198,51 +191,46 @@ class PDFExtractor:
         with open(output_dir / "TITLE", "w", encoding="utf-8") as f:
             f.write(title)
 
-    async def process_pdf(
-        self, pdf_path: Path, semaphore: asyncio.Semaphore
-    ) -> Optional[Tuple[str, str]]:
+    async def process_pdf(self, pdf_path: Path) -> Optional[Tuple[str, str]]:
         """Process a single PDF file."""
-        async with semaphore:
-            try:
-                pdf_name = pdf_path.stem
-                LOGGER.info(f"Processing: {pdf_name}")
+        try:
+            pdf_name = pdf_path.stem
+            LOGGER.info(f"Processing: {pdf_name}")
 
-                # Upload file
-                file_id = await self._upload_file(pdf_path)
-                LOGGER.info(f"{pdf_name} -> {file_id}")
+            # Upload file
+            file_id = await self._upload_file(pdf_path)
+            LOGGER.info(f"{pdf_name} -> {file_id}")
 
-                # Extract title
-                title = await self._extract_title(file_id)
-                slug = slugify(title)[:200]  # Limit filename length
-                LOGGER.info(f"{pdf_name} -> Title: {title}, Slug: {slug}")
+            # Extract title
+            title = await self._extract_title(file_id)
+            slug = slugify(title)[:200]  # Limit filename length
+            LOGGER.info(f"{pdf_name} -> Title: {title}, Slug: {slug}")
 
-                # Extract content sections
-                title_and_abstract = await self._extract_title_and_abstract(file_id)
-                LOGGER.info(
-                    f"{pdf_name} -> Title/Abstract: {repr(title_and_abstract[:50])}"
-                )
+            # Extract content sections
+            title_and_abstract = await self._extract_title_and_abstract(file_id)
+            LOGGER.info(f"{pdf_name} -> Title/Abstract: {repr(title_and_abstract[:50])}")
 
-                last_section = await self._extract_last_section(file_id)
-                LOGGER.info(f"{pdf_name} -> Last section: {repr(last_section[:50])}")
+            last_section = await self._extract_last_section(file_id)
+            LOGGER.info(f"{pdf_name} -> Last section: {repr(last_section[:50])}")
 
-                # Create output directory and save artifacts
-                output_dir = self._create_output_directory(slug)
-                self._save_artifacts(output_dir, pdf_path, title)
+            # Create output directory and save artifacts
+            output_dir = self._create_output_directory(slug)
+            self._save_artifacts(output_dir, pdf_path, title)
 
-                # Extract and save main content
-                await self._extract_main_content(
-                    file_id,
-                    title_and_abstract,
-                    last_section,
-                    output_dir / "extracted.md",
-                )
+            # Extract and save main content
+            await self._extract_main_content(
+                file_id,
+                title_and_abstract,
+                last_section,
+                output_dir / "extracted.md",
+            )
 
-                LOGGER.info(f"Finished processing: {output_dir}")
-                return slug, title
+            LOGGER.info(f"Finished processing: {output_dir}")
+            return slug, title
 
-            except Exception as e:
-                LOGGER.error(f"Error processing {pdf_path}: {e}", exc_info=True)
-                return None
+        except Exception as e:
+            LOGGER.error(f"Error processing {pdf_path}: {e}", exc_info=True)
+            return None
 
     def _get_pdf_files(self) -> List[Path]:
         """Get list of PDF files to process."""
@@ -262,17 +250,12 @@ class PDFExtractor:
             LOGGER.info("No PDF files found to process")
             return
 
-        semaphore = asyncio.Semaphore(self.max_concurrent)
-        tasks = [self.process_pdf(pdf_path, semaphore) for pdf_path in pdf_files]
+        tasks = [self.process_pdf(pdf_path) for pdf_path in pdf_files]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Count successful extractions
-        successful = sum(
-            1
-            for result in results
-            if isinstance(result, tuple) and result[0] and result[1]
-        )
+        successful = sum(1 for result in results if isinstance(result, tuple) and result[0] and result[1])
         LOGGER.info(f"Successfully extracted {successful} out of {len(pdf_files)} PDFs")
 
 
