@@ -24,6 +24,7 @@ from paper_reader.config import (
     MODEL_DEFAULT,
     MAX_TOKENS_TAG_ARTICLE,
     MODEL_INSTRUCT,
+    TAG_SURVEY_THRESHOLD,
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
     TAG_SURVEY_MD_FILE,
@@ -382,8 +383,14 @@ async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
     tasks = []
     for tag in all_tags:
         info = get_or_create_tag_info(tag)
-        LOGGER.info(f'Tag "{info["name"]}" has {len(info["related_paper_slugs"])} related papers.')
-        tasks.append(aprocess_tag(info))
+        if len(info["related_paper_slugs"]) >= TAG_SURVEY_THRESHOLD:
+            LOGGER.info(f'Tag "{info["name"]}" has {len(info["related_paper_slugs"])} related papers.')
+            tasks.append(aprocess_tag(info))
+        else:
+            LOGGER.warning(
+                f'Tag "{info["name"]}" has only {len(info["related_paper_slugs"])} related papers. '
+                "Skipping survey generation."
+            )
 
     await asyncio.gather(*tasks)
 

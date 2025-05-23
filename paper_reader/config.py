@@ -92,6 +92,7 @@ REBUILD_ALL = os.getenv("REBUILD_ALL", "True").lower() == "true"
 REBUILD_ALL_TAGS = os.getenv("REBUILD_ALL_TAGS", str(REBUILD_ALL)).lower() == "true"
 ENABLE_THINKING = os.getenv("ENABLE_THINKING", "False").lower() == "true"
 DEFAULT_STREAM = os.getenv("DEFAULT_STREAM", "True").lower() == "true"
+TAG_SURVEY_THRESHOLD = int(os.getenv("TAG_SURVEY_THRESHOLD", "2")) # at least 2 articles
 
 ARTICLE_SUMMARY_VERBOSE = os.getenv("ARTICLE_SUMMARY_VERBOSE", "False").lower() == "true"
 # --- RAG Configuration ---
