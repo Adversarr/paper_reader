@@ -45,7 +45,7 @@ def _get_api_base(provider: str) -> str:
     elif provider == "openrouter":
         return "https://api.openrouter.ai/v1"
     elif provider == 'siliconflow':
-        return "https://api.siliconflow.cn/v1/chat/completions"
+        return "https://api.siliconflow.cn/v1"
     elif provider == "custom":
         custom_base = os.getenv("CUSTOM_API_BASE", "")
         if not custom_base:
