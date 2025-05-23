@@ -1,20 +1,28 @@
 # tag_manager.py
+import asyncio
+from json import dumps
 import os
 from typing import Iterable, List, Dict, Optional
 from paper_reader.models import TagInfo, ArticleSummary, Content
+from paper_reader.prompt_helpers import load_prompt
 from paper_reader.prompts import (
     TAG_PRUNE_SYSTEM,
     TAG_SURVEY_SYSTEM,
+    TAG_UPDATE_SYSTEM,
     create_message_entry,
 )
 from paper_reader.utils import (
     ensure_dir_exists,
+    human_readable_slugify,
     slugify,
     save_text_and_embedding,
     load_text_and_embedding,
 )
 from paper_reader.config import (
+    REBUILD_ALL_TAGS,
+    MODEL_DEFAULT,
     MODEL_FAST,
+    MAX_TOKENS_TAG_ARTICLE,
     MODEL_INSTRUCT,
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
@@ -22,14 +30,13 @@ from paper_reader.config import (
     MAX_TOKENS_TAG_DESCRIPTION,
     DOCS_DIR,
     SUMMARIZED_MD_FILE,
-    MAX_TOKENS_TAG_ARTICLE,
     LOGGER,
 )
 from paper_reader.openai_utils import (
     generate_completion,
     get_embedding,
+    # generate_completion,
 )
-from paper_reader.vector_store import get_relevant_context_for_prompt
 
 # Global store for tags (in-memory, could be persisted to a JSON file)
 # Maps tag_slug to TagInfo
@@ -55,7 +62,7 @@ def get_or_create_tag_info(tag_name: str) -> TagInfo:
     ensure_dir_exists(tag_dir)
 
     if tag_slug in _GLOBAL_TAG_STORE:
-        return _GLOBAL_TAG_STORE[tag_slug]
+        return _GLOBAL_TAG_STORE[tag_slug]  # Return in-memory if already loaded
 
     description_content: Optional[Content] = load_text_and_embedding(tag_dir, TAG_DESCRIPTION_MD_FILE)
     survey_content: Optional[Content] = load_text_and_embedding(tag_dir, TAG_SURVEY_MD_FILE)
@@ -71,75 +78,18 @@ def get_or_create_tag_info(tag_name: str) -> TagInfo:
     # A robust load would scan all articles and rebuild this mapping.
 
     related_papers = []
-    if tag_slug in _GLOBAL_TAG_STORE:
-        related_papers = _GLOBAL_TAG_STORE[tag_slug]["related_paper_slugs"]
+    if tag_slug in _GLOBAL_TAG_STORE:  # If we have some in-memory state
+        related_papers = _GLOBAL_TAG_STORE[tag_slug].get("related_paper_slugs", [])
 
     tag_info = TagInfo(
         name=tag_name,
         tag_slug=tag_slug,
         description=description_content,
         survey=survey_content,
-        related_paper_slugs=related_papers,
+        related_paper_slugs=related_papers,  # This will be updated
     )
     _GLOBAL_TAG_STORE[tag_slug] = tag_info  # Update global store
     return tag_info
-
-
-async def generate_tag_description(tag_name: str, force_regenerate: bool = False) -> Optional[Content]:
-    """Generates a description for a tag using an LLM."""
-    tag_slug = slugify(tag_name)
-    tag_dir = os.path.join(TAGS_DIR, tag_slug)
-    ensure_dir_exists(tag_dir)
-    
-    # Check if description already exists and we're not forcing regeneration
-    if not force_regenerate:
-        existing_description = load_text_and_embedding(tag_dir, TAG_DESCRIPTION_MD_FILE)
-        if existing_description:
-            return existing_description
-    
-    # Use RAG to get relevant context
-    rag_query = f"What is {tag_name} in academic context?"
-    rag_context = get_relevant_context_for_prompt(rag_query, "tags")
-    
-    # Build prompt
-    prompt = [
-        create_message_entry(
-            "user",
-            f"Generate a comprehensive description of the research area, concept, or technology known as '{tag_name}'.\n\n"
-            "This should be a well-structured, informative explanation suitable for academic context."
-        )
-    ]
-    
-    if rag_context and rag_context != "No existing content to retrieve from.":
-        prompt.append(
-            create_message_entry(
-                "user",
-                f"Here is some relevant context that might help:\n\n{rag_context}"
-            )
-        )
-    
-    # Generate the description
-    description_text = await generate_completion(
-        prompt=prompt,
-        system_prompt="You are an expert academic researcher with deep knowledge across many fields. "
-                     "Provide detailed, accurate descriptions of academic concepts.",
-        model=MODEL_INSTRUCT,
-        max_tokens=MAX_TOKENS_TAG_DESCRIPTION,
-        temperature=0.3,  # Lower temperature for more factual output
-    )
-    
-    if not description_text:
-        LOGGER.error(f"Failed to generate description for tag: {tag_name}")
-        return None
-    
-    # Generate embedding for the description
-    embedding = get_embedding(description_text)
-    
-    # Save the description and its embedding
-    description_content = Content(content=description_text, vector=embedding)
-    save_text_and_embedding(tag_dir, TAG_DESCRIPTION_MD_FILE, description_text, embedding)
-    
-    return description_content
 
 
 async def aprocess_tag(tag_info: TagInfo):
@@ -147,208 +97,269 @@ async def aprocess_tag(tag_info: TagInfo):
     tag_name = tag_info["name"]
     tag_slug = tag_info["tag_slug"]
     tag_dir = os.path.join(TAGS_DIR, tag_slug)
-    
-    # Generate description if needed
-    if tag_info["description"] is None:
-        LOGGER.info(f"Generating description for tag: {tag_name}")
-        description_content = await generate_tag_description(tag_name)
-        if description_content:
-            tag_info["description"] = description_content
-            save_text_and_embedding(
-                tag_dir, TAG_DESCRIPTION_MD_FILE, description_content["content"], description_content["vector"]
-            )
-    
-    # Generate survey if needed
-    if tag_info["survey"] is None and tag_info["related_paper_slugs"]:
-        LOGGER.info(f"Generating survey for tag: {tag_name}")
-        survey_content = await agenerate_tag_survey(tag_name)
-        if survey_content:
-            tag_info["survey"] = survey_content
-            save_text_and_embedding(
-                tag_dir, TAG_SURVEY_MD_FILE, survey_content["content"], survey_content["vector"]
-            )
+
+    ensure_dir_exists(tag_dir)  # Ensure the directory exists
+
+    # Generate description and survey for the tag
+    await agenerate_tag_survey(tag_name, True)
 
 
-async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False) -> Optional[Content]:
-    """Generates a survey of papers for a specific tag."""
-    tag_slug = slugify(tag_name)
+async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
+    """Generates (or re-generates) a survey of related papers for a tag."""
     tag_info = get_or_create_tag_info(tag_name)
+    tag_slug = tag_info["tag_slug"]
     tag_dir = os.path.join(TAGS_DIR, tag_slug)
-    ensure_dir_exists(tag_dir)
-    
-    # Check if survey already exists and we're not forcing regeneration
-    if not force_regenerate and tag_info["survey"] is not None:
-        return tag_info["survey"]
-    
-    # If there are no related papers, we can't generate a survey
-    if not tag_info["related_paper_slugs"]:
-        LOGGER.warning(f"No related papers found for tag: {tag_name}. Cannot generate survey.")
-        return None
-    
-    # Gather summaries of related papers
-    paper_summaries = []
-    for paper_slug in tag_info["related_paper_slugs"]:
+
+    if not force_regenerate and tag_info["survey"] and tag_info["survey"]["content"]:
+        LOGGER.info(f"Survey for tag '{tag_name}' already exists. Skipping generation.")
+        return
+
+    LOGGER.info(f"Start generating survey for tag: {tag_name}")
+
+    system_prompt = TAG_SURVEY_SYSTEM
+    ####################### 1. prelogue
+    previous_survey_text = tag_info["survey"]["content"] if tag_info["survey"] else "N/A"
+
+    # only select the first two. TODO: use ranking.
+    selected_papers = tag_info.get("related_paper_slugs", [])[:2]
+    related_papers_summaries = ""
+    for paper_slug in selected_papers:
         paper_dir = os.path.join(DOCS_DIR, paper_slug)
-        summary = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
-        if summary:
-            paper_summaries.append(summary["content"])
-    
-    if not paper_summaries:
-        LOGGER.warning(f"No paper summaries found for tag: {tag_name}. Cannot generate survey.")
-        return None
-    
-    # Build prompt for the survey
-    paper_context_text = "\n\n---\n".join(paper_summaries)
-    prompt = [
+        summary_content_obj = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
+        if summary_content_obj is None:
+            LOGGER.error(f"Failed to load summary for paper: {paper_slug}")
+            continue
+        previous_survey_text += f"""
+            <!-- Paper Summary for {paper_slug} -->
+
+            {summary_content_obj['content']}
+        """
+
+    all_prompts = [
         create_message_entry(
-            "user",
-            f"Generate a comprehensive survey of research papers related to '{tag_name}'.\n\n"
-            f"Here are the summaries of relevant papers:\n\n{paper_context_text}\n\n"
-            "Provide a well-structured survey that synthesizes the key findings, methodologies, "
-            "and contributions of these papers, highlighting relationships between them."
+            role="user",
+            template="<!-- Previous Survey -->\n\n{previous_survey_text}\n\n<!-- End Previous Survey -->\n\n"
+            "<!-- Related Papers Summaries -->\n\n{related_papers_summaries}\n\n",
+            previous_survey_text=previous_survey_text,
+            related_papers_summaries=related_papers_summaries,
         )
     ]
-    
-    # Generate the survey
-    survey_text = await generate_completion(
-        prompt=prompt,
-        system_prompt=TAG_SURVEY_SYSTEM,
-        model=MODEL_INSTRUCT,
-        max_tokens=MAX_TOKENS_TAG_ARTICLE,
-        temperature=0.4,
+
+    all_prompts.append(
+        create_message_entry(
+            role="user",
+            template="Generate the introduction part of the survey for {tag}. Fill in the blanks(square bracket]). "
+            "\n\nYou do not need to generate the full text, Template: \n\n{text}",
+            text=load_prompt("prompts/tag_survey/prelogue.md"),
+            tag=tag_name,
+        )
     )
-    
-    if not survey_text:
-        LOGGER.error(f"Failed to generate survey for tag: {tag_name}")
-        return None
-    
-    # Generate embedding for the survey
-    embedding = get_embedding(survey_text)
-    
-    # Save the survey and its embedding
-    survey_content = Content(content=survey_text, vector=embedding)
-    save_text_and_embedding(tag_dir, TAG_SURVEY_MD_FILE, survey_text, embedding)
-    
-    # Update tag info in memory
-    tag_info["survey"] = survey_content
-    
-    return survey_content
+
+    # TODO: include article's output.
+    tag_introduction_part = await generate_completion(
+        all_prompts,
+        system_prompt=system_prompt,
+        model=MODEL_DEFAULT,
+        max_tokens=MAX_TOKENS_TAG_DESCRIPTION,
+    )
+    if tag_introduction_part is None:
+        LOGGER.error(f"Failed to generate prelogue for tag survey: {tag_name}")
+        return
+    all_prompts.append(create_message_entry(role="assistant", template=tag_introduction_part))
+
+    # Collect related articles info for context
+    article_infos = []
+    for paper_slug in tag_info.get("related_paper_slugs", []):
+        paper_dir = os.path.join(DOCS_DIR, paper_slug)
+        summary_content_obj = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
+        if summary_content_obj is None:
+            LOGGER.error(f"Failed to load summary for paper: {paper_slug}")
+            continue
+        article_prompt = [
+            create_message_entry(
+                role="user",
+                template="<!-- This is the paper summary -->\n\n{content}",
+                content=summary_content_obj["content"],
+            ),
+            create_message_entry(
+                role="user",
+                template="Generate the 'Related Articles' part of the survey (just one item in this prompt)."
+                "Fill in the blanks (the [square bracket]). Template: \n\n{text}",
+                text=load_prompt("prompts/tag_survey/_article1.md"),
+            ),
+        ]
+        LOGGER.info(f"Tag \"{tag_name}\" related paper: {paper_slug}")
+        response = await generate_completion(
+            all_prompts + article_prompt,
+            system_prompt,
+            model=MODEL_DEFAULT,
+            max_tokens=MAX_TOKENS_TAG_ARTICLE,
+        )
+        if response is None:
+            LOGGER.error(f"Failed to generate completion for paper: {paper_slug}")
+            continue
+        article_infos.append(create_message_entry("assistant", response))
+
+    survey_text = await generate_completion(
+        all_prompts
+        + article_infos
+        + [
+            create_message_entry(
+                role="user",
+                template="Generate the final survey text based on the provided articles.",
+            )
+        ],
+        system_prompt,
+        temperature=0.2,
+    )
+
+    if survey_text:
+        embedding_vector = get_embedding(survey_text)
+        save_text_and_embedding(tag_dir, TAG_SURVEY_MD_FILE, survey_text, embedding_vector)
+        tag_info["survey"] = Content(content=survey_text, vector=embedding_vector)
+        _GLOBAL_TAG_STORE[tag_slug] = tag_info  # Update store
+        LOGGER.info(f"  Generated and saved survey for tag '{tag_name}'.")
+    else:
+        LOGGER.info(f"  Failed to generate survey for tag '{tag_name}'.")
 
 
 async def prune_tags(tags: Iterable[str]) -> List[str]:
-    """Filters and standardizes a list of tags using LLM."""
-    # If there are no tags, return an empty list
-    if not tags:
-        return []
-    
-    # Convert to list and deduplicate
-    tag_list = list(set(tags))
-    
-    # If there's only one or two tags, no need to call the LLM
-    if len(tag_list) <= 2:
-        return tag_list
-    
-    # Prepare tag list as a comma-separated string
-    tags_str = ", ".join(tag_list)
-    
-    # Build prompt for tag pruning
-    prompt = [
-        create_message_entry(
-            "user",
-            f"I have extracted the following tags from an academic paper: {tags_str}\n\n"
-            "Please standardize, consolidate, and filter these tags to ensure they are:\n"
-            "1. Relevant academic concepts or research areas\n"
-            "2. Not too general or too specific\n"
-            "3. Consistent in format and terminology\n\n"
-            "Return only the final list of tags as a comma-separated list, with no explanation."
-        )
-    ]
-    
-    # Generate the pruned tag list
-    pruned_tags_str = await generate_completion(
-        prompt=prompt,
+    """
+    Cleans and slugifies a list of tags.
+    This function ensures that tags are unique and properly formatted.
+    """
+    tags_stripped = [tag.strip() for tag in tags]
+    prompt_tags = ",".join(tags_stripped)
+    pruned = await generate_completion(
+        prompt=prompt_tags,
         system_prompt=TAG_PRUNE_SYSTEM,
-        model=MODEL_FAST,  # Use a faster model for this task
-        max_tokens=200,  # Reasonable limit for tag lists
-        temperature=0.2,  # Lower temperature for more consistent output
+        model=MODEL_INSTRUCT,
+        thinking=False,
     )
-    
-    if not pruned_tags_str:
-        LOGGER.warning("Failed to prune tags, returning original list")
-        return tag_list
-    
-    # Parse the pruned tags back into a list
-    pruned_tags = [tag.strip() for tag in pruned_tags_str.split(",") if tag.strip()]
-    
-    # If parsing failed, return the original list
-    if not pruned_tags:
-        return tag_list
-    
-    return pruned_tags
 
-
-async def update_tag_with_article(tag_name: str, article: ArticleSummary):
-    """Updates a tag with information from an article."""
-    tag_info = get_or_create_tag_info(tag_name)
-    paper_slug = article["paper_slug"]
-    
-    # If the paper is already associated with the tag, nothing to do
-    if paper_slug in tag_info["related_paper_slugs"]:
-        return tag_info
-    
-    # Add paper slug to the tag's related papers
-    tag_info["related_paper_slugs"].append(paper_slug)
-    
-    # If this is the first paper for this tag, generate the description
-    if len(tag_info["related_paper_slugs"]) == 1 and tag_info["description"] is None:
-        description_content = await generate_tag_description(tag_name)
-        if description_content:
-            tag_info["description"] = description_content
-            tag_dir = os.path.join(TAGS_DIR, tag_info["tag_slug"])
-            save_text_and_embedding(
-                tag_dir, TAG_DESCRIPTION_MD_FILE, description_content["content"], description_content["vector"]
-            )
-    
-    # If we have enough papers and no survey yet, generate the survey
-    # This could be tuned; here we generate after 3 papers
-    if len(tag_info["related_paper_slugs"]) >= 3 and tag_info["survey"] is None:
-        survey_content = await agenerate_tag_survey(tag_name)
-        if survey_content:
-            tag_info["survey"] = survey_content
-    
-    return tag_info
+    if pruned:
+        LOGGER.info(f"Pruned tags: {pruned}")
+        pruned_tags = [tag.strip() for tag in pruned.split(",") if tag.strip()]
+        # Ensure uniqueness and slugify
+        unique_tags = set(pruned_tags)
+        return [slugify(tag) for tag in unique_tags]
+    else:
+        LOGGER.error(f"Failed to prune tags: {tags_stripped}")
+        return [slugify(tag) for tag in tags_stripped]
 
 
 async def update_tags(article: ArticleSummary, pruned_tags: List[str]):
-    """Updates all tags for an article."""
-    LOGGER.info(f"Updating tags for article: {article['title']}")
-    
-    for tag_name in pruned_tags:
-        await update_tag_with_article(tag_name, article)
-    
-    # Update article with pruned tags
-    article["tags"] = pruned_tags
+    """
+    Update the tags using pruned_tags
+    """
+    if article["tags"] is None:
+        raise ValueError(f"Article '{article['title']}' has no tags. Cannot update.")
+    pruned_tags_s = ",".join(pruned_tags)
+    article_tags_s = ",".join(article["tags"])
+    all_prompts = []
+
+    if article["short_summary"] is not None:
+        all_prompts.append(
+            create_message_entry(
+                role="user",
+                template="<!-- Article Summary -->\n\n{summary}",
+                summary=article["short_summary"]["content"],
+            )
+        )
+    all_prompts += [
+        create_message_entry(
+            role="user",
+            template="<!-- Pruned Tags -->\n\n{tags}",
+            tags=pruned_tags_s,
+        ),
+        create_message_entry(
+            role="user",
+            template="<!-- Article Tags -->\n\n{tags}",
+            tags=article_tags_s,
+        ),
+    ]
+
+    output = await generate_completion(
+        prompt=all_prompts,
+        system_prompt=TAG_UPDATE_SYSTEM,
+        model=MODEL_INSTRUCT,
+        temperature=0.2,
+    )
+    if output is None:
+        LOGGER.error(f"Failed to update tags for article '{article['title']}'. Tags: {article_tags_s}")
+        return None
+
+    return _str_to_list(output)
 
 
 async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
-    """Processes all tags based on a list of articles."""
-    LOGGER.info("Processing all tags...")
-    
-    # Clear global tag store to rebuild from disk
-    _GLOBAL_TAG_STORE.clear()
-    
-    # Process each article's tags
+    """
+    Iteratively updates all tags based on the full list of articles.
+    This function is called after all articles are processed.
+    It ensures that tag descriptions and surveys are (re)generated
+    with the full context of all related papers.
+    """
+
+    # 1. get all the tags
+    all_tags = set()
     for article in all_articles:
-        if not article:  # Skip None articles
-            continue
-            
-        tags = article.get("tags", [])
-        if tags:
-            await update_tags(article, tags)
-    
-    # Process all tags that have articles
-    for tag_slug, tag_info in _GLOBAL_TAG_STORE.items():
-        if tag_info["related_paper_slugs"]:
-            await aprocess_tag(tag_info)
-    
-    LOGGER.info(f"Finished processing {len(_GLOBAL_TAG_STORE)} tags")
+        if article.get("tags"):
+            all_tags.update(article["tags"])
+        else:
+            LOGGER.warning(f"Article '{article['title']}' has no tags. Skipping.")
+    all_tags = list(all_tags)
+
+    # 1.1 use LLM to fix duplicated tags.
+    if REBUILD_ALL_TAGS:
+        all_tags = await prune_tags(all_tags)
+        LOGGER.info(f"All tags after pruning: {all_tags}")
+        tasks = []
+        for article in all_articles:
+            if article.get("tags"):
+                tasks.append(update_tags(article, all_tags))
+        pruned_tags_list = await asyncio.gather(*tasks)
+
+        for article, pruned_tags in zip(all_articles, pruned_tags_list):
+            existing_tags = article.get("tags")
+            if existing_tags:
+                pruned_tags.sort()
+                existing_tags.sort()
+                pruned_tags = await update_tags(article, all_tags)
+                if pruned_tags is not None:
+                    pruned_tags = [slugify(tag.strip()) for tag in pruned_tags]
+                    article["tags"] = pruned_tags
+                    # Update the tag file
+                    tag_json_path = os.path.join(article["paper_path"], "tags.json")
+                    set_diff = (set(existing_tags) - set(pruned_tags)) | (set(pruned_tags) - set(existing_tags))
+                    if set_diff:
+                        LOGGER.info(f"Updating tags for article '{article['title']}'."
+                            f"\nold: {existing_tags}."
+                            f"\nnew: {pruned_tags}.")
+                        with open(tag_json_path, "w") as f:
+                            f.write(dumps(article["tags"], indent=2))
+                            LOGGER.info(f"Saved tags to {tag_json_path}")
+                else:
+                    LOGGER.error(f"Failed to update tags for article '{article['title']}'.")
+        all_tags = []
+        for article in all_articles:
+            if article.get("tags"):
+                all_tags.extend(article["tags"])
+        all_tags = list(set(all_tags))
+
+    # 1.2 prepare all the tags.
+    for tag in all_tags:
+        get_or_create_tag_info(human_readable_slugify(tag))
+    for article in all_articles:
+        if article.get("tags"):
+            for tag_name_slug in article["tags"]:
+                _GLOBAL_TAG_STORE[tag_name_slug]["related_paper_slugs"].append(article["paper_slug"])
+
+    tasks = []
+    for tag in all_tags:
+        info = get_or_create_tag_info(tag)
+        LOGGER.info(f'Tag "{info["name"]}" has {len(info["related_paper_slugs"])} related papers.')
+        tasks.append(aprocess_tag(info))
+
+    await asyncio.gather(*tasks)
+
+    LOGGER.info("--- Tag Update Process Complete ---")

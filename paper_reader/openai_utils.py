@@ -1,5 +1,4 @@
 # openai_utils.py
-import asyncio
 from asyncio import Semaphore
 from typing import List, Optional
 
@@ -182,10 +181,6 @@ def generate_completion_streaming(
             TOTAL_CALL_COUNTER[model] = 0
         TOTAL_CALL_COUNTER[model] += 1
 
-        # Display thinking process if enabled
-        if thinking:
-            console.print(Panel(Markdown("Thinking..."), title="Thinking Process"))
-
         # Create the stream
         stream = client.chat.completions.create(
             model=model,
@@ -197,6 +192,9 @@ def generate_completion_streaming(
             extra_body=extra_body,
         )
 
+        is_answering = False
+        thinking_content = ""
+
         prompt_tokens = completion_tokens = total_tokens = 0
         with Live(
             Panel(Markdown(""), title="Generating Response"), refresh_per_second=10
@@ -206,12 +204,29 @@ def generate_completion_streaming(
                     prompt_tokens = chunk.usage.prompt_tokens
                     completion_tokens = chunk.usage.completion_tokens
                     total_tokens = chunk.usage.total_tokens
+                if not chunk.choices:
+                    continue
 
-                if chunk.choices and chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    panel_content += content
+                delta = chunk.choices[0].delta
+                if hasattr(delta, "reasoning_content") and delta.reasoning_content is not None:
+                    if not is_answering:
+                        thinking_content += delta.reasoning_content
                     live.update(
-                        Panel(Markdown(panel_content), title="Generating Response")
+                        Panel(
+                            Markdown(_shortten_md(thinking_content)),
+                            title=f"💭 Reasoning ({model})",
+                            border_style='green'
+                        )
+                    )
+                if hasattr(delta, "content") and delta.content is not None:
+                    is_answering = True
+                    panel_content += delta.content
+                    live.update(
+                        Panel(
+                            Markdown(_shortten_md(panel_content)),
+                            title=f"📝 Generating ({model})",
+                            border_style="blue",
+                        )
                     )
 
         if model not in TOTAL_TOKENS_PROMPT:
@@ -257,10 +272,6 @@ async def agenerate_completion_streaming(
 
         # Prepare extra body based on thinking parameter
         extra_body = THINK_EXTRA_BODY if thinking else NO_THINK_EXTRA_BODY
-        console = Console()
-
-        if thinking:
-            console.print(Panel(Markdown("Thinking..."), title="Thinking Process"))
 
         try:
             # Track API usage

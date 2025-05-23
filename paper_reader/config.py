@@ -69,6 +69,7 @@ MODEL_TAG = os.getenv("MODEL_TAG", MODEL_DEFAULT)
 MODEL_LONG = os.getenv("MODEL_LONG", MODEL_DEFAULT)
 MODEL_INSTRUCT = os.getenv("MODEL_INSTRUCT", MODEL_DEFAULT)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
+ARTICLE_SUMMARY_TEMPERATURE = float(os.getenv("ARTICLE_SUMMARY_TEMPERATURE", "0.7"))
 
 
 NO_THINK_EXTRA_BODY: dict[str, Any] = {"enable_thinking": False}
