@@ -43,12 +43,11 @@ EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", OPENAI_API_KEY)  # Ensure thi
 # --- Model Configuration ---
 
 # NOTE: These model names are suitable only for bailian api.
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-plus")
-GPT_MODEL_DEFAULT = os.getenv("GPT_MODEL_DEFAULT", DEFAULT_MODEL)
-GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", DEFAULT_MODEL)
-GPT_MODEL_TAG = os.getenv("GPT_MODEL_TAG", DEFAULT_MODEL)
-GPT_MODEL_LONG = os.getenv("GPT_MODEL_LONG", DEFAULT_MODEL)
-GPT_MODEL_INSTRUCT = os.getenv("GPT_MODEL_INSTRUCT", DEFAULT_MODEL)
+MODEL_DEFAULT = os.getenv("MODEL_DEFAULT", "qwen-plus")
+MODEL_FAST = os.getenv("MODEL_FAST", MODEL_DEFAULT)
+MODEL_TAG = os.getenv("MODEL_TAG", MODEL_DEFAULT)
+MODEL_LONG = os.getenv("MODEL_LONG", MODEL_DEFAULT)
+MODEL_INSTRUCT = os.getenv("MODEL_INSTRUCT", MODEL_DEFAULT)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
 
 
@@ -73,7 +72,9 @@ DEFAULT_THINKING = os.getenv("DEFAULT_THINKING", "False").lower() == "true"
 DEFAULT_STREAM = os.getenv("DEFAULT_STREAM", "True").lower() == "true"
 
 ARTICLE_SUMMARY_VERBOSE = os.getenv("ARTICLE_SUMMARY_VERBOSE", "False").lower() == "true"
+# --- RAG Configuration ---
 ENABLE_RAG_FOR_ARTICLES = os.getenv("ENABLE_RAG_FOR_ARTICLES", "True").lower() == "true"
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "2"))
 
 MAX_TOKENS_SUMMARY = int(os.getenv("MAX_TOKENS_SUMMARY", str(DEFAULT_MAX_TOKENS)))
 MAX_TOKENS_TAG_SURVEY = int(os.getenv("MAX_TOKENS_TAG_SURVEY", str(MAX_TOKENS_SUMMARY)))

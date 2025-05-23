@@ -25,6 +25,12 @@ API_KEY=sk-XXXXXXXXXXXXXXXXXXXXXXXXXXX
 EMBEDDING_PROVIDER=bailian # Only bailian is supported for now
 PRIVIDER=bailian # bailian, openai, openrouter, volcengine, custom
 # BASE_URL=https://url.to.your.provider/v1 # Only needed if using a custom provider
+# (Optional, my preference)
+MODEL_DEFAULT=qwen-plus                 # support thinking
+MODEL_FAST=qwen-turbo                   # support 1M context
+MODEL_LONG=qwen-turbo                   # support 1M context
+MODEL_INSTRUCT=qwen2.5-32b-instruct     # better instruction follow
+MAX_CONCURRENT=6                        # avoid TPM limit
 ```
 
 ### Running the Paper Reader
@@ -63,5 +69,5 @@ You will see the outputs in the `vault` directory.
 To read and summarize the papers, use the following command:
 
 ```sh
-$ MAX_CONCURRENT=4 DEFAULT_REBUILD=false DEFAULT_MODEL=qwen-plus GPT_MODEL_FAST=qwen-turbo GPT_MODEL_INSTRUCT=qwen2.5-32b-instruct python main.py
+$ MAX_CONCURRENT=4 DEFAULT_REBUILD=false MODEL_DEFAULT=qwen-plus MODEL_FAST=qwen-turbo MODEL_INSTRUCT=qwen2.5-32b-instruct python main.py
 ```

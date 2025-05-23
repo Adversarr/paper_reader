@@ -10,8 +10,8 @@ from paper_reader.config import (
     DOCS_DIR,
     ENABLE_RAG_FOR_ARTICLES,
     EXTRACTED_MD_FILE,
-    GPT_MODEL_INSTRUCT,
-    GPT_MODEL_LONG,
+    MODEL_INSTRUCT,
+    MODEL_LONG,
     LOGGER,
     MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
     MAX_TOKENS_TAGS,
@@ -87,7 +87,7 @@ async def _agenerate_and_save_content_tldr(
     )
 
     if not generated_text:
-        print(f"Failed to generate {output_filename_md}.")
+        LOGGER.error(f"Failed to generate {output_filename_md}.")
         return None
 
     embedding_vector = get_embedding(generated_text)
@@ -117,10 +117,9 @@ async def _agenerate_and_save_content_article_summary(
     }
 
     existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
-    if (
-        existing_content_obj and not force_rebuild
-    ):  # Check if we can reuse existing content
-        print(f"Found existing {output_filename_md} in {output_dir}, loading.")
+    # Check if we can reuse existing content
+    if existing_content_obj and not force_rebuild:
+        LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
     all_prompts = [
         create_message_entry(
@@ -160,7 +159,7 @@ async def _agenerate_and_save_content_article_summary(
     )
 
     if ARTICLE_SUMMARY_VERBOSE:
-        print("#" * 50 + f"\nGenerated prelogue:\n{generated_text}\n" + "#" * 50)
+        LOGGER.debug("#" * 50 + f"\nGenerated prelogue:\n{generated_text}\n" + "#" * 50)
 
     if not generated_text:
         LOGGER.error(f"Failed to generate {output_filename_md}.")
@@ -173,9 +172,7 @@ async def _agenerate_and_save_content_article_summary(
     # RAG: Augment prompt with relevant context if query is provided
     if ENABLE_RAG_FOR_ARTICLES:
         # Example: get context from other article summaries
-        rag_context = get_relevant_context_for_prompt(
-            generated_text, source_type="articles"
-        )
+        rag_context = get_relevant_context_for_prompt(generated_text, "articles")
         rag_context += "\n\n"
         rag_context += get_relevant_context_for_prompt(generated_text, "tags")
         all_prompts.append(create_message_entry(role="user", template=rag_context))
@@ -200,14 +197,14 @@ async def _agenerate_and_save_content_article_summary(
             thinking=thinking,
         )
         if not generated_text:
-            print(f"Failed to generate {output_filename_md}.")
+            LOGGER.error(f"Failed to generate {output_filename_md}.")
             return None
         # Append to chat history.
         all_prompts.append(create_message_entry("assistant", generated_text))
         all_generated.append(create_message_entry("assistant", generated_text))
 
         if ARTICLE_SUMMARY_VERBOSE:
-            print("#" * 50 + f"\nGenerated {stage}:\n{generated_text}\n" + "#" * 50)
+            LOGGER.debug("#" * 50 + f"\nGenerated {stage}:\n{generated_text}\n" + "#" * 50)
 
     ####################### generate the final summary
     merge_prompt = create_message_entry("user", template=ARTICLE_SUMMARY_MERGE_PROMPT)
@@ -217,11 +214,11 @@ async def _agenerate_and_save_content_article_summary(
     generated_text = await generate_completion(
         all_generated,
         ARTICLE_SUMMARY_SYSTEM,
-        model=GPT_MODEL_LONG,
-        thinking=thinking,
+        model=MODEL_INSTRUCT,
+        thinking=False,
     )
     if generated_text is None:
-        print(f"Failed to generate merged summary for {output_filename_md}.")
+        LOGGER.error(f"Failed to generate merged summary for {output_filename_md}.")
         return None
 
     ####################### save the final summary
@@ -231,7 +228,7 @@ async def _agenerate_and_save_content_article_summary(
     )
     LOGGER.info(f'Done. Saved to "{output_dir}/{output_filename_md}"')
     if ARTICLE_SUMMARY_VERBOSE:
-        print("#" * 50 + "Generated Summary Full:\n" + generated_text + "\n" + "#" * 50)
+        LOGGER.debug("#" * 50 + "Generated Summary Full:\n" + generated_text + "\n" + "#" * 50)
     return Content(content=generated_text, vector=embedding_vector)
 
 async def _agenerate_and_save_content_short_summary(
@@ -299,7 +296,7 @@ async def agenerate_tags(
     tags_string = await generate_completion(
         prompt=all_prompts,
         system_prompt=EXTRACT_TAGS_SYSTEM,
-        model=GPT_MODEL_INSTRUCT,
+        model=MODEL_INSTRUCT,
         max_tokens=MAX_TOKENS_TAGS,
         thinking=False, # Most instruction model does not support thinking.
     )
@@ -308,9 +305,9 @@ async def agenerate_tags(
         tags_list = [
             slugify(tag.strip()) for tag in tags_string.split(",") if tag.strip()
         ]
-        print(f"  Extracted tags: {tags_list}")
+        LOGGER.info(f"  Extracted tags: {tags_list}")
     else:
-        print("  Failed to extract tags.")
+        LOGGER.error("  Failed to extract tags.")
 
     return tags_list
 
@@ -326,14 +323,13 @@ async def aprocess_article(
     `article_title` is the human-readable title used for slugification if needed.
     `semaphore` is used to limit concurrent processing.
     """
-    print(f"\nProcessing article: {article_title} in directory {paper_directory_name}")
     paper_slug = slugify(
         article_title
     )  # This should match paper_directory_name if generated by this system
     paper_path = os.path.join(
         DOCS_DIR, paper_directory_name
     )  # Use the provided directory name
-    print(f"Paper path: {paper_path} - " + f"slug: {paper_slug}")
+    LOGGER.info(f"Paper path: {paper_path} - " + f"slug: {paper_slug}")
 
     if paper_directory_name != paper_slug:
         # Rename the directory to match the slugified name
@@ -352,14 +348,14 @@ async def aprocess_article(
         if os.path.exists(md_path_only):
             with open(md_path_only, "r", encoding="utf-8") as f:
                 raw_text = f.read()
-            print(f"Found {EXTRACTED_MD_FILE}, generating its embedding...")
+            LOGGER.info(f"Found {EXTRACTED_MD_FILE}, generating its embedding...")
             embedding_vector = get_embedding(raw_text)
             save_text_and_embedding(
                 paper_path, EXTRACTED_MD_FILE, raw_text, embedding_vector
             )  # This saves .npz
             extracted_content_obj = Content(content=raw_text, vector=embedding_vector)
         else:
-            print(
+            LOGGER.error(
                 f"Error: {EXTRACTED_MD_FILE} not found in {paper_path}. Skipping article."
             )
             return None
@@ -409,11 +405,11 @@ async def aprocess_article(
     # A real system might store tags in the ArticleSummary file or a separate tags.json.
     # Here, we'll just generate them.
     tag_json_path = Path(os.path.join(paper_path, "tags.json"))
-    print(f"Extracting tags for {paper_directory_name}...")
+    LOGGER.info(f"Extracting tags for {paper_directory_name}...")
 
     prev_tags_list: Optional[List[str]] = None
     if tag_json_path.exists():
-        print(f"Found existing tags.json in {paper_directory_name}, loading.")
+        LOGGER.info(f"Found existing tags.json in {paper_directory_name}, loading.")
         with open(tag_json_path, "r", encoding="utf-8") as f:
             prev_tags_list = loads(f.read())
     if DEFAULT_REBUILD or prev_tags_list is None:

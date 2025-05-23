@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.table import Table
 
 from paper_reader.config import (
     BASE_URL,
@@ -24,7 +25,7 @@ from paper_reader.config import (
     EMBEDDING_API_KEY,
     EMBEDDING_BASE_URL,
     EMBEDDING_MODEL,
-    GPT_MODEL_DEFAULT,
+    MODEL_DEFAULT,
     LOGGER,
     MAX_CONCURRENT,
     NO_THINK_EXTRA_BODY,
@@ -42,6 +43,29 @@ aclient = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=BASE_URL)
 # use 10000 as unlimited
 semaphore = Semaphore(MAX_CONCURRENT if MAX_CONCURRENT > 0 else 10000)
 
+TOTAL_TOKENS_PROMPT     : dict[str, int] = {}
+TOTAL_TOKENS_COMPLETION : dict[str, int] = {}
+TOTAL_TOKENS_TOTAL      : dict[str, int] = {}
+TOTAL_CALL_COUNTER      : dict[str, int] = {}
+
+async def rich_print_consumption_table():
+    async with semaphore:
+        console = Console()
+        table = Table(title="Token Consumption Summary", show_lines=True)
+        table.add_column("Model", justify="left", style="cyan", no_wrap=True)
+        table.add_column("Prompt Tokens", justify="right", style="magenta")
+        table.add_column("Completion Tokens", justify="right", style="green")
+        table.add_column("Total Tokens", justify="right", style="yellow")
+        table.add_column("Call Count", justify="right", style="blue")  # Add this line to include call count in the table
+        for model in sorted(TOTAL_TOKENS_PROMPT.keys()):
+            table.add_row(
+                model,
+                str(TOTAL_TOKENS_PROMPT[model]),
+                str(TOTAL_TOKENS_COMPLETION[model]),
+                str(TOTAL_TOKENS_TOTAL[model]),
+                str(TOTAL_CALL_COUNTER[model]),  # Add this line to display the call count for each model
+            )
+        console.print(table)
 
 def _shortten_md(long_text: str, threshold=2000) -> str:
     if len(long_text) < threshold:
@@ -61,7 +85,7 @@ def get_embedding(text: str, model: str = EMBEDDING_MODEL) -> Optional[np.ndarra
         response = client_embedding.embeddings.create(input=[text], model=model)
         return np.array(response.data[0].embedding)
     except (APIConnectionError, RateLimitError, APIStatusError, Exception) as e:
-        print(f"Error getting embedding: {e}")
+        LOGGER.error(f"Error getting embedding: {e}")
         # TODO: Implement retry logic if necessary
         return None
 
@@ -69,7 +93,7 @@ def get_embedding(text: str, model: str = EMBEDDING_MODEL) -> Optional[np.ndarra
 def generate_completion_streaming(
     prompt: str | List,
     system_prompt=DEFAULT_SYSTEM_PROMPT,
-    model: str = GPT_MODEL_DEFAULT,
+    model: str = MODEL_DEFAULT,
     max_tokens: int | None = None,
     temperature: float = DEFAULT_TEMPERATURE,
     thinking: bool = False,
@@ -104,14 +128,18 @@ def generate_completion_streaming(
         is_answering = False
 
         # Create markdown prelogue with messages
-        md_prelogue = "# Prompts\n\n"
+        md_prelogue = f"# Prompts to {model}\n\n"
         for i, message in enumerate(messages):
             if len(message["content"]) > 60:
-                short_content = message["content"][:30] + "..." + message["content"][-30:]
+                short_content = (
+                    message["content"][:30] + "..." + message["content"][-30:]
+                )
             else:
                 short_content = message["content"]
             short_content = short_content.replace("\n", "\\n")
-            md_prelogue += f"{i}. **{message['role'].capitalize()}**: \"{short_content}\"\n"
+            md_prelogue += (
+                f'{i}. **{message["role"].capitalize()}**: "{short_content}"\n'
+            )
 
         _THINK_TITLE = "# Thinking Process 💭\n" if thinking else ""
         with Live(auto_refresh=False, console=console) as live:
@@ -139,12 +167,20 @@ def generate_completion_streaming(
                 delta = chunk.choices[0].delta
 
                 # Process thinking content if enabled
-                if thinking and hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                if (
+                    thinking
+                    and hasattr(delta, "reasoning_content")
+                    and delta.reasoning_content
+                ):
                     reasoning_content += delta.reasoning_content
                     if not is_answering:
                         live.update(
                             Panel(
-                                Markdown(md_prelogue + _THINK_TITLE + _shortten_md(reasoning_content)),
+                                Markdown(
+                                    md_prelogue
+                                    + _THINK_TITLE
+                                    + _shortten_md(reasoning_content)
+                                ),
                                 title="Thinking",
                                 border_style="magenta",
                                 title_align="left",
@@ -158,7 +194,9 @@ def generate_completion_streaming(
                     if not is_answering:
                         if thinking:
                             reasoning_content = (
-                                _THINK_TITLE + _shortten_md(reasoning_content, 0) + "\n\n# Final Answer 📝\n"
+                                _THINK_TITLE
+                                + _shortten_md(reasoning_content, 0)
+                                + "\n\n# Final Answer 📝\n"
                             )
                         else:
                             reasoning_content = "# Final Answer 📝\n"
@@ -167,7 +205,11 @@ def generate_completion_streaming(
                     answer_content += delta.content
                     live.update(
                         Panel(
-                            Markdown(md_prelogue + reasoning_content + _shortten_md(answer_content)),
+                            Markdown(
+                                md_prelogue
+                                + reasoning_content
+                                + _shortten_md(answer_content)
+                            ),
                             title="Response",
                             border_style="blue",
                             title_align="left",
@@ -193,6 +235,11 @@ def generate_completion_streaming(
                 refresh=True,
             )
 
+            TOTAL_TOKENS_COMPLETION[model] = TOTAL_TOKENS_COMPLETION.get(model, 0) + completion_tokens
+            TOTAL_TOKENS_PROMPT[model] = TOTAL_TOKENS_PROMPT.get(model, 0) + prompt_tokens
+            TOTAL_TOKENS_TOTAL[model] = TOTAL_TOKENS_TOTAL.get(model, 0) + total_tokens
+            TOTAL_CALL_COUNTER[model] = TOTAL_CALL_COUNTER.get(model, 0) + 1
+
         return answer_content.strip()
 
     except (APIConnectionError, RateLimitError, APIStatusError, Exception) as e:
@@ -209,7 +256,7 @@ def generate_completion_streaming(
 async def agenerate_completion_streaming(
     prompt: str | List,
     system_prompt=DEFAULT_SYSTEM_PROMPT,
-    model: str = GPT_MODEL_DEFAULT,
+    model: str = MODEL_DEFAULT,
     max_tokens: int | None = None,
     temperature: float = DEFAULT_TEMPERATURE,
     thinking: bool = False,
@@ -239,6 +286,8 @@ async def agenerate_completion_streaming(
     try:
         reasoning_content = ""
         answer_content = ""
+        completion_comsumption = prompt_consumption = total_consumption = 0
+
         async with semaphore:
             async for chunk in await aclient.chat.completions.create(
                 model=model,
@@ -250,14 +299,26 @@ async def agenerate_completion_streaming(
                 stream_options={"include_usage": True},
                 n=1,
             ):
+                if chunk.usage:
+                    prompt_consumption = chunk.usage.prompt_tokens
+                    completion_comsumption = chunk.usage.completion_tokens
+                    total_consumption = chunk.usage.total_tokens
+
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
-                if thinking and hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                if (
+                    thinking
+                    and hasattr(delta, "reasoning_content")
+                    and delta.reasoning_content
+                ):
                     reasoning_content += delta.reasoning_content
                 if hasattr(delta, "content") and delta.content:
                     answer_content += delta.content
-
+        TOTAL_TOKENS_COMPLETION[model] = TOTAL_TOKENS_COMPLETION.get(model, 0) + completion_comsumption
+        TOTAL_TOKENS_PROMPT[model] = TOTAL_TOKENS_PROMPT.get(model, 0) + prompt_consumption
+        TOTAL_TOKENS_TOTAL[model] = TOTAL_TOKENS_TOTAL.get(model, 0) + total_consumption
+        TOTAL_CALL_COUNTER[model] = TOTAL_CALL_COUNTER.get(model, 0) + 1
         return answer_content.strip()
 
     except (APIConnectionError, RateLimitError, APIStatusError, Exception) as e:
@@ -274,14 +335,16 @@ async def agenerate_completion_streaming(
 async def generate_completion(
     prompt: str | List,
     system_prompt=DEFAULT_SYSTEM_PROMPT,
-    model: str = GPT_MODEL_DEFAULT,
+    model: str = MODEL_DEFAULT,
     max_tokens: int | None = None,
     temperature: float = DEFAULT_TEMPERATURE,
     thinking=False,  # Add this line to include the thinking parameter
     stream: bool = DEFAULT_STREAM,
 ) -> Optional[str]:
     if stream or thinking:
-        return await agenerate_completion_streaming(prompt, system_prompt, model, max_tokens, temperature, thinking)
+        return await agenerate_completion_streaming(
+            prompt, system_prompt, model, max_tokens, temperature, thinking
+        )
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -302,13 +365,18 @@ async def generate_completion(
                 stream=False,
                 extra_body=NO_THINK_EXTRA_BODY,
             )
-
-        return response.choices[0].message.content.strip()
+        output = response.choices[0].message.content.strip()
+        if response.usage:
+            TOTAL_TOKENS_COMPLETION[model] = TOTAL_TOKENS_COMPLETION.get(model, 0) + response.usage.completion_tokens
+            TOTAL_TOKENS_PROMPT[model] = TOTAL_TOKENS_PROMPT.get(model, 0) + response.usage.prompt_tokens
+            TOTAL_TOKENS_TOTAL[model] = TOTAL_TOKENS_TOTAL.get(model, 0) + response.usage.completion_tokens
+            TOTAL_CALL_COUNTER[model] = TOTAL_CALL_COUNTER.get(model, 0) + 1
+        return output
     except (APIConnectionError, RateLimitError, APIStatusError, Exception) as e:
         LOGGER.error(f"Error generating completion: {e}")
         return None
 
 
-if __name__ == "__main__":
-    print(generate_completion_streaming("Hello.", "You are a helpful assistant. "))
-    print(generate_completion_streaming("Hello.", "You are a helpful assistant. ", thinking=True))
+# if __name__ == "__main__":
+#     print(generate_completion_streaming("Hello.", "You are a helpful assistant. "))
+#     print(generate_completion_streaming("Hello.", "You are a helpful assistant. ", thinking=True))

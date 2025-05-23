@@ -20,8 +20,8 @@ from paper_reader.utils import (
 )
 from paper_reader.config import (
     DEFAULT_REBUILD_TAGS,
-    GPT_MODEL_DEFAULT,
-    GPT_MODEL_FAST,
+    MODEL_DEFAULT,
+    MODEL_FAST,
     MAX_TOKENS_TAG_ARTICLE,
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
@@ -158,7 +158,7 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
     tag_introduction_part = await generate_completion(
         all_prompts,
         system_prompt=system_prompt,
-        model=GPT_MODEL_DEFAULT,
+        model=MODEL_DEFAULT,
         max_tokens=MAX_TOKENS_TAG_DESCRIPTION,
     )
     if tag_introduction_part is None:
@@ -190,7 +190,7 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
         response = await generate_completion(
             all_prompts + article_prompt,
             system_prompt,
-            model=GPT_MODEL_DEFAULT,
+            model=MODEL_DEFAULT,
             max_tokens=MAX_TOKENS_TAG_ARTICLE,
         )
         if response is None:
@@ -231,7 +231,7 @@ async def prune_tags(tags: Iterable[str]) -> List[str]:
     pruned = await generate_completion(
         prompt=prompt_tags,
         system_prompt=TAG_PRUNE_SYSTEM,
-        model=GPT_MODEL_FAST,
+        model=MODEL_FAST,
         thinking=False,
     )
 
@@ -256,12 +256,12 @@ async def update_tags(article: ArticleSummary, pruned_tags: List[str]):
     article_tags_s = ",".join(article["tags"])
     all_prompts = []
 
-    if article["summary"] is not None:
+    if article["short_summary"] is not None:
         all_prompts.append(
             create_message_entry(
                 role="user",
                 template="<!-- Article Summary -->\n\n{summary}",
-                summary=article["summary"]["content"],
+                summary=article["short_summary"]["content"],
             )
         )
     all_prompts += [

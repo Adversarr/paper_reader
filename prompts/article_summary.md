@@ -12,6 +12,8 @@ After that write a detailed review of the paper, in markdown format, following t
 2. Fill in each section step by step according to the depth of your reading.
 3. Use Markdown formatting (such as lists and bold) to organize your notes and make them more readable.
 
+<!-- INCLUDE: prompts/_md_preference.md -->
+
 You may be request to generate some part of the final summary.
 
 <!-- INCLUDE: prompts/article_summary/how_to_read_paper.md -->

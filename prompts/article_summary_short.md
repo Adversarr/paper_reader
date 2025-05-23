@@ -11,6 +11,8 @@ Your primary goal is to populate this template with a comprehensive yet concise 
 - Remove all the HTML comments and placeholders before finalizing the summary.
 - Fill in the blanks where indicated with `[...]`. Do not include the square brackets in your final summary.
 
+<!-- INCLUDE: prompts/_md_preference.md -->
+
 <!-- Following is a structured format to guide your summary. -->
 
 # [Title of the Paper/Article]

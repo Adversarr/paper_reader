@@ -5,6 +5,7 @@ from typing_extensions import deprecated
 import numpy as np
 from typing import Optional, List
 from paper_reader.models import Content
+from paper_reader.config import LOGGER
 
 
 def ensure_dir_exists(path: str):
@@ -62,7 +63,7 @@ def load_text_and_embedding(base_path: str, filename_md: str) -> Optional[Conten
             data = np.load(npz_path)
             embedding_vector = data["vector"]
         except Exception as e:
-            print(f"Warning: Could not load embedding from {npz_path}: {e}")
+            LOGGER.warning(f"Warning: Could not load embedding from {npz_path}: {e}")
             embedding_vector = None  # Or handle more gracefully
 
     return Content(content=text_content, vector=embedding_vector)

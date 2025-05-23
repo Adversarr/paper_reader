@@ -3,8 +3,9 @@ import os
 from typing import List, Tuple
 from dotenv import load_dotenv
 from paper_reader.article_processor import aprocess_article
+from paper_reader.openai_utils import rich_print_consumption_table
 from paper_reader.tag_manager import process_all_tags_iteratively
-from paper_reader.config import DOCS_DIR, VAULT_DIR, EXTRACTED_MD_FILE
+from paper_reader.config import DOCS_DIR, VAULT_DIR, EXTRACTED_MD_FILE, LOGGER
 from paper_reader.utils import ensure_dir_exists
 import asyncio
 
@@ -32,7 +33,7 @@ def discover_papers() -> List[Tuple[str, str]]:
                 human_readable_title = item.replace("_", " ").replace("-", " ").title()
                 papers_to_process.append((item, human_readable_title))
             else:
-                print(f"Skipping directory {item_path}: {EXTRACTED_MD_FILE} not found.")
+                LOGGER.warning(f"Skipping directory {item_path}: {EXTRACTED_MD_FILE} not found.")
     return papers_to_process
 
 
@@ -40,7 +41,21 @@ async def main():
     """
     Main function to orchestrate the processing of articles and tags.
     """
-    print("Starting RAG System Processing...")
+
+    global running
+    running = True
+
+    async def run_print_consumption():
+        try:
+            await asyncio.sleep(5)  # Sleep for 5 seconds before checking again
+            await rich_print_consumption_table()  # Print the consumption table
+            asyncio.create_task(run_print_consumption())  # Reschedule the task to run again after printing
+        except asyncio.CancelledError:
+            pass
+
+    print_consumption_task = asyncio.create_task(run_print_consumption())  # Schedule the task to run periodically
+
+    LOGGER.info("Starting RAG System Processing...")
     load_dotenv()  # Load environment variables from .env file
 
     ensure_dir_exists(VAULT_DIR)
@@ -52,8 +67,10 @@ async def main():
     papers_to_process_info: List[Tuple[str, str]] = discover_papers()
 
     if not papers_to_process_info:
-        print("No papers found to process. Ensure `vault/docs/<paper_dir>/extracted.md` exists.")
-        print("Example: vault/docs/my-first-paper/extracted.md")
+        LOGGER.warning(
+            "No papers found to process. Ensure `vault/docs/<paper_dir>/extracted.md` exists.\n"
+            "Example: vault/docs/my-first-paper/extracted.md"
+        )
         # Create a dummy paper for testing if none exist
         dummy_paper_dir_name = "example-paper-on-ai-ethics"
         dummy_paper_title = "Example Paper on AI Ethics"
@@ -67,7 +84,7 @@ async def main():
                     f"\nSection 2 discusses implications.\n"
                     f"\nSection 3 concludes the findings."
                 )
-            print(f"Created a dummy paper for demonstration: {dummy_extracted_md_path}")
+            LOGGER.warning(f"Created a dummy paper for demonstration: {dummy_extracted_md_path}")
             papers_to_process_info.append((dummy_paper_dir_name, dummy_paper_title))
 
     tasks = []
@@ -82,9 +99,10 @@ async def main():
     if processed_articles:
         await process_all_tags_iteratively(processed_articles)
     else:
-        print("No articles were successfully processed. Skipping tag updates.")
+        LOGGER.error("No articles were successfully processed. Skipping tag updates.")
 
-    print("\nRAG System Processing Complete.")
+    LOGGER.info("\nRAG System Processing Complete.")
+    rich_print_consumption_table()
 
 
 if __name__ == "__main__":

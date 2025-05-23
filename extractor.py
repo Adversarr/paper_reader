@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 from paper_reader.config import MAX_CONCURRENT, PROVIDER, VAULT_DIR, LOGGER
 from paper_reader.openai_utils import aclient
-from paper_reader.utils import ensure_dir_exists, slugify
+from paper_reader.utils import slugify
 from paper_reader.prompts import load_prompt
 import os
 
@@ -73,7 +73,6 @@ async def process_pdf(pdf_path: Path, sem: asyncio.Semaphore):
 
             assert output.choices[0].message.content is not None
             title_and_abstract = output.choices[0].message.content.strip()
-            # print(f"token consumption: {output.usage.total_tokens}")
             LOGGER.info(f"{pdf_name} -> {repr(title_and_abstract[:50])}")
             if output.usage is not None:
                 LOGGER.info(f"Consumption: {output.usage.total_tokens} tokens")
