@@ -8,6 +8,8 @@ wheels/
 vault
 raw
 raw_aigc
+.DS_Store
+raw_*
 
 # Virtual environments
 .venv
