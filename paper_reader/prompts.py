@@ -8,6 +8,7 @@ EXTRACT_TAGS_SYSTEM = load_prompt("prompts/extract_tags.md")
 TAG_SURVEY_SYSTEM = load_prompt("prompts/tag_survey.md")
 TAG_PRUNE_SYSTEM = load_prompt("prompts/prune_tags.md")
 TAG_UPDATE_SYSTEM = load_prompt("prompts/update_tags.md")
+ARTICLE_SHORT_SUMMARY_SYSTEM = load_prompt("prompts/article_summary_short.md")
 
 ARTICLE_SUMMARY_MERGE_PROMPT = f"""
 Provided are different parts of the full summary, base on this, merge and get the final result.
@@ -41,4 +42,5 @@ if __name__ == "__main__":
     print(len(ARTICLE_SUMMARY_SYSTEM))
     print(len(TLDR_SUMMARY_SYSTEM))
     print(len(EXTRACT_TAGS_SYSTEM))
+
     print(len(TAG_SURVEY_SYSTEM))

@@ -2,13 +2,17 @@
 
 Extract the text from a PDF paper and return it in markdown format, maintaining the same content as the original PDF (excluding the informations in the beginning of the paper).
 
+## Instructions
+
 **Content Formatting:**
+
 1. You don't need to split lines exactly as they appear in the PDF, but ensure proper markdown formatting.
 2. Equations: Split into isolated blocks.
 3. Extract pseudocode as Python-style code blocks with UTF-8 symbols (e.g., →, ≥).
 4. Preserve bold/italic formatting.
 
 **Contents Inclusions/Exclusions:**
+
 1. Exclusions: Omit citations/references. Include appendices if present.
 2. Insert following information in the output between the Title and the Abstract:
    - **Author** information, example: `Author 1, Author 2, ..., Author n, Affiliation`. If multiple affiliations exist, separate them using a list, see example below. (this is a must)
@@ -21,8 +25,6 @@ Typically, a paper starts with the Title and Abstract, followed by the Introduct
 
 You might be asked to return some sections/paragraphs from the PDF. In such cases, you should return only those paragraphs without any additional explanation.
 
-
-
 ## Examples
 
 The markdown/md wrapper (codeblocks in Input/Output) is used to indicate the start and end of the message. You should not return the wrapper, and just return the content inside the code block.
@@ -30,6 +32,7 @@ The markdown/md wrapper (codeblocks in Input/Output) is used to indicate the sta
 ### Example 1: do not split the lines. Use markdown formatting properly.
 
 **INPUT:**
+
 ```md
 ABSTRACT
 

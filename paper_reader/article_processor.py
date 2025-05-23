@@ -10,11 +10,13 @@ from paper_reader.config import (
     DOCS_DIR,
     ENABLE_RAG_FOR_ARTICLES,
     EXTRACTED_MD_FILE,
+    GPT_MODEL_INSTRUCT,
     GPT_MODEL_LONG,
     LOGGER,
     MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
     MAX_TOKENS_TAGS,
     MAX_TOKENS_TLDR,
+    SHORT_SUMMARIZED_MD_FILE,
     SUMMARIZED_MD_FILE,
     TLDR_MD_FILE,
 )
@@ -25,6 +27,7 @@ from paper_reader.prompts import (
     ARTICLE_SUMMARY_MERGE_PROMPT,
     ARTICLE_SUMMARY_SYSTEM,
     EXTRACT_TAGS_SYSTEM,
+    ARTICLE_SHORT_SUMMARY_SYSTEM,
     TLDR_SUMMARY_SYSTEM,
     create_message_entry,
 )
@@ -50,10 +53,10 @@ async def _agenerate_and_save_content_tldr(
     if (
         existing_content_obj and not force_rebuild
     ):  # Check if we can reuse existing content
-        print(f"Found existing {output_filename_md} in {output_dir}, loading.")
+        LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
 
-    print(f"Generating {output_filename_md} for {output_dir}...")
+    LOGGER.info(f"Generating {output_filename_md} for {output_dir}...")
 
     # RAG: Augment prompt with relevant context if query is provided
     rag_ctx = ""
@@ -231,6 +234,54 @@ async def _agenerate_and_save_content_article_summary(
         print("#" * 50 + "Generated Summary Full:\n" + generated_text + "\n" + "#" * 50)
     return Content(content=generated_text, vector=embedding_vector)
 
+async def _agenerate_and_save_content_short_summary(
+    full_text: str,
+    summary_text: str,
+    output_dir: str,
+    output_filename_md: str,
+    force_rebuild: bool = DEFAULT_REBUILD,
+    thinking: bool = DEFAULT_THINKING,
+) -> Optional[Content]:
+    """Helper to generate, embed, and save a short summary of an article."""
+    existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
+    if (
+        existing_content_obj and not force_rebuild
+    ):  # Check if we can reuse existing content
+        LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
+        return existing_content_obj
+
+    LOGGER.info(f"Generating {output_filename_md} for {output_dir}...")
+
+    all_prompts = [
+        create_message_entry(
+            "user",
+            "<-- This is the Full Article Text -->\n\n{text}",
+            text=full_text
+        ),
+        create_message_entry(
+            "user",
+            "<-- This is the Detailed Article Summary -->\n\n{text}",
+            text=summary_text
+        ),
+    ]
+
+    generated_text = await generate_completion(
+        prompt=all_prompts,
+        system_prompt=ARTICLE_SHORT_SUMMARY_SYSTEM,
+        temperature=0.4,
+        thinking=thinking,
+    )
+
+    if not generated_text:
+        LOGGER.error(f"Failed to generate {output_filename_md}.")
+        return None
+
+    embedding_vector = get_embedding(generated_text)
+    save_text_and_embedding(
+        output_dir, output_filename_md, generated_text, embedding_vector
+    )
+    LOGGER.info(f'Done. Saved short summary to "{Path(output_dir) / output_filename_md}"')
+    return Content(content=generated_text, vector=embedding_vector)
 
 async def agenerate_tags(
     text: str,
@@ -248,8 +299,9 @@ async def agenerate_tags(
     tags_string = await generate_completion(
         prompt=all_prompts,
         system_prompt=EXTRACT_TAGS_SYSTEM,
+        model=GPT_MODEL_INSTRUCT,
         max_tokens=MAX_TOKENS_TAGS,
-        thinking=thinking,
+        thinking=False, # Most instruction model does not support thinking.
     )
     tags_list: List[str] = []
     if tags_string:
@@ -329,9 +381,18 @@ async def aprocess_article(
         previous_content_for_prompt=previous_summary_text,
     )
     if summary_obj is None:
-        print(
-            f"Error generating summary for {paper_path}. Skipping further processing."
-        )
+        LOGGER.error(f"Error generating summary for {paper_path}. Skipping further processing.")
+        return None
+
+    short_summary_obj = await _agenerate_and_save_content_short_summary(
+        full_text = raw_text,
+        summary_text = summary_obj["content"],
+        output_dir=paper_path,
+        output_filename_md=SHORT_SUMMARIZED_MD_FILE,
+    )
+
+    if short_summary_obj is None:
+        LOGGER.error(f"Error generating short summary for {paper_path}. Skipping further processing.")
         return None
 
     # 3. Generate TLDR summary
@@ -357,7 +418,8 @@ async def aprocess_article(
             prev_tags_list = loads(f.read())
     if DEFAULT_REBUILD or prev_tags_list is None:
         tags_list = await agenerate_tags(
-            text=summary_obj["content"],
+            text=short_summary_obj["content"],
+            # text=summary_obj["content"],
             previous_tags=prev_tags_list,
             thinking=False,
         )
@@ -375,6 +437,7 @@ async def aprocess_article(
         paper_path=paper_path,
         content=extracted_content_obj,
         summary=summary_obj,
+        short_summary=short_summary_obj,
         tldr=tldr_obj,
         tags=tags_list,
     )

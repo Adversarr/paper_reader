@@ -20,6 +20,7 @@ class ArticleSummary(TypedDict):
     paper_path: str  # Path to extracted.md
     content: Content  # Original content from extracted.md
     summary: Optional[Content]  # Article-level summary
+    short_summary: Optional[Content]  # Short summary of the article
     tldr: Optional[Content]  # TLDR summary
     tags: List[str]  # List of extracted tag names (strings)
 

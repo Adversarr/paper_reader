@@ -48,6 +48,7 @@ GPT_MODEL_DEFAULT = os.getenv("GPT_MODEL_DEFAULT", DEFAULT_MODEL)
 GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", DEFAULT_MODEL)
 GPT_MODEL_TAG = os.getenv("GPT_MODEL_TAG", DEFAULT_MODEL)
 GPT_MODEL_LONG = os.getenv("GPT_MODEL_LONG", DEFAULT_MODEL)
+GPT_MODEL_INSTRUCT = os.getenv("GPT_MODEL_INSTRUCT", DEFAULT_MODEL)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
 
 
@@ -57,7 +58,7 @@ THINK_EXTRA_BODY: dict[str, Any] = {"enable_thinking": True}
 # --- File Names ---
 EXTRACTED_MD_FILE = "extracted.md"
 SUMMARIZED_MD_FILE = "summarized.md"
-SECTIONS_SUMMARIZED_MD_FILE = "sections_summarized.md"
+SHORT_SUMMARIZED_MD_FILE = "short_summarized.md"
 TLDR_MD_FILE = "tldr.md"
 TAG_DESCRIPTION_MD_FILE = "description.md"
 TAG_SURVEY_MD_FILE = "survey.md"

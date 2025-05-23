@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+import shutil
 from paper_reader.config import MAX_CONCURRENT, PROVIDER, VAULT_DIR, LOGGER
 from paper_reader.openai_utils import aclient
 from paper_reader.utils import ensure_dir_exists, slugify
@@ -129,6 +130,9 @@ async def process_pdf(pdf_path: Path, sem: asyncio.Semaphore):
             )
             output_dir = Path(f"{VAULT_DIR}/docs/{slug}")
             output_dir.mkdir(parents=True, exist_ok=True)
+
+            # copy the original file to the output directory
+            shutil.copy(pdf_path, output_dir / "raw.pdf")
 
             with open(output_dir / "TITLE", "w") as f:
                 f.write(title)

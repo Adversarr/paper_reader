@@ -1,6 +1,6 @@
 <!-- INCLUDE: prompts/_role_scholar_reviewing.md -->
 
-## Instructions
+# Instructions
 
 First you should follow the instructions above to read the paper, think deeply about the paper:
 1. You should use the three-pass approach to read the paper.
