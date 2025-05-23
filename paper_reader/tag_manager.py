@@ -20,10 +20,13 @@ from paper_reader.utils import (
     load_text_and_embedding,
 )
 from paper_reader.config import (
+    MODEL_FAST,
+    PRUNE_ALL_TAGS,
     REBUILD_ALL_TAGS,
     MODEL_DEFAULT,
     MAX_TOKENS_TAG_ARTICLE,
     MODEL_INSTRUCT,
+    SHORT_SUMMARIZED_MD_FILE,
     TAG_SURVEY_THRESHOLD,
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
@@ -102,7 +105,7 @@ async def aprocess_tag(tag_info: TagInfo):
     ensure_dir_exists(tag_dir)  # Ensure the directory exists
 
     # Generate description and survey for the tag
-    await agenerate_tag_survey(tag_name, True)
+    await agenerate_tag_survey(tag_name, REBUILD_ALL_TAGS)
 
 
 async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
@@ -126,7 +129,7 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
     related_papers_summaries = ""
     for paper_slug in selected_papers:
         paper_dir = os.path.join(DOCS_DIR, paper_slug)
-        summary_content_obj = load_text_and_embedding(paper_dir, SUMMARIZED_MD_FILE)
+        summary_content_obj = load_text_and_embedding(paper_dir, SHORT_SUMMARIZED_MD_FILE)
         if summary_content_obj is None:
             LOGGER.error(f"Failed to load summary for paper: {paper_slug}")
             continue
@@ -145,28 +148,6 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
             related_papers_summaries=related_papers_summaries,
         )
     ]
-
-    all_prompts.append(
-        create_message_entry(
-            role="user",
-            template="Generate the introduction part of the survey for {tag}. Fill in the blanks(square bracket]). "
-            "\n\nYou do not need to generate the full text, Template: \n\n{text}",
-            text=load_prompt("prompts/tag_survey/prelogue.md"),
-            tag=tag_name,
-        )
-    )
-
-    # TODO: include article's output.
-    tag_introduction_part = await generate_completion(
-        all_prompts,
-        system_prompt=system_prompt,
-        model=MODEL_DEFAULT,
-        max_tokens=MAX_TOKENS_TAG_DESCRIPTION,
-    )
-    if tag_introduction_part is None:
-        LOGGER.error(f"Failed to generate prelogue for tag survey: {tag_name}")
-        return
-    all_prompts.append(create_message_entry(role="assistant", template=tag_introduction_part))
 
     # Collect related articles info for context
     article_infos = []
@@ -193,13 +174,35 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
         response = await generate_completion(
             all_prompts + article_prompt,
             system_prompt,
-            model=MODEL_DEFAULT,
+            model=MODEL_FAST,
             max_tokens=MAX_TOKENS_TAG_ARTICLE,
         )
         if response is None:
             LOGGER.error(f"Failed to generate completion for paper: {paper_slug}")
             continue
         article_infos.append(create_message_entry("assistant", response))
+
+    tag_introduction_part = await generate_completion(
+        all_prompts
+        + article_infos
+        + [
+            create_message_entry(
+                role="user",
+                template="Generate the introduction part of the survey for {tag}. Fill in the blanks(square bracket]). "
+                "\n\nYou do not need to generate the full text, Template: \n\n{text}",
+                text=load_prompt("prompts/tag_survey/prelogue.md"),
+                tag=tag_name,
+            )
+        ],
+        system_prompt=system_prompt,
+        model=MODEL_DEFAULT,
+        max_tokens=MAX_TOKENS_TAG_DESCRIPTION,
+    )
+
+    if tag_introduction_part is None:
+        LOGGER.error(f"Failed to generate prelogue for tag survey: {tag_name}")
+        return
+    all_prompts.append(create_message_entry(role="assistant", template=tag_introduction_part))
 
     survey_text = await generate_completion(
         all_prompts
@@ -211,7 +214,7 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
             )
         ],
         system_prompt,
-        temperature=0.2,
+        temperature=0.5,
     )
 
     if survey_text:
@@ -333,7 +336,7 @@ async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
     all_tags = list(all_tags)
 
     # 1.1 use LLM to fix duplicated tags.
-    if REBUILD_ALL_TAGS:
+    if PRUNE_ALL_TAGS:
         all_tags = await prune_tags(all_tags)
         LOGGER.info(f"All tags after pruning: {all_tags}")
         tasks = []

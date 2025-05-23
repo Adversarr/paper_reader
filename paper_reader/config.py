@@ -44,6 +44,8 @@ def _get_api_base(provider: str) -> str:
         return "https://ark.cn-beijing.volces.com/api/v3"
     elif provider == "openrouter":
         return "https://api.openrouter.ai/v1"
+    elif provider == 'siliconflow':
+        return "https://api.siliconflow.cn/v1/chat/completions"
     elif provider == "custom":
         custom_base = os.getenv("CUSTOM_API_BASE", "")
         if not custom_base:
@@ -90,6 +92,7 @@ DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "16384"))
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
 REBUILD_ALL = os.getenv("REBUILD_ALL", "True").lower() == "true"
 REBUILD_ALL_TAGS = os.getenv("REBUILD_ALL_TAGS", str(REBUILD_ALL)).lower() == "true"
+PRUNE_ALL_TAGS = os.getenv("PRUNE_ALL_TAGS", str(REBUILD_ALL)).lower() == "true"
 ENABLE_THINKING = os.getenv("ENABLE_THINKING", "False").lower() == "true"
 DEFAULT_STREAM = os.getenv("DEFAULT_STREAM", "True").lower() == "true"
 TAG_SURVEY_THRESHOLD = int(os.getenv("TAG_SURVEY_THRESHOLD", "2")) # at least 2 articles
