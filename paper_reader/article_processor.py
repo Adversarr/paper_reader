@@ -5,6 +5,7 @@ import os
 from paper_reader.config import (
     ARTICLE_SUMMARY_TEMPERATURE,
     ARTICLE_SUMMARY_VERBOSE,
+    MODEL_DEFAULT,
     REBUILD_ALL,
     ENABLE_THINKING,
     DOCS_DIR,
@@ -17,6 +18,7 @@ from paper_reader.config import (
     MAX_TOKENS_TLDR,
     SHORT_SUMMARIZED_MD_FILE,
     SUMMARIZED_MD_FILE,
+    TAGS_JSON_FILE,
     TLDR_MD_FILE,
 )
 from json import loads, dumps
@@ -236,7 +238,6 @@ async def _agenerate_and_save_content_short_summary(
 
     # Build the prompt
     all_prompts = []
-    all_prompts.append(create_message_entry("user", f"<-- This is the paper content -->\n\n{full_text[:1000]}..."))
     all_prompts.append(
         create_message_entry(
             "user",
@@ -245,9 +246,7 @@ async def _agenerate_and_save_content_short_summary(
     )
     all_prompts.append(
         create_message_entry(
-            "user",
-            "Create a short summary (250-300 words) that captures the key points of this paper. "
-            "Focus on the problem addressed, the proposed approach, and the significance of the results.",
+            "user", "Fill in the blanks (the [squared brackets]) in the template in the system prompt",
         )
     )
 
@@ -255,10 +254,9 @@ async def _agenerate_and_save_content_short_summary(
     generated_text = await generate_completion(
         prompt=all_prompts,
         system_prompt=ARTICLE_SHORT_SUMMARY_SYSTEM,
-        model=MODEL_INSTRUCT,
-        max_tokens=500,  # Appropriate length for short summary
+        model=MODEL_DEFAULT,
         temperature=ARTICLE_SUMMARY_TEMPERATURE,
-        thinking=thinking,
+        thinking=False,
     )
 
     if not generated_text:
@@ -281,7 +279,7 @@ async def agenerate_tags(
     force_rebuild: bool = REBUILD_ALL,
 ) -> List[str]:
     """Generates tags for an article using NLP and returns a list of pruned tags."""
-    output_file = Path(output_dir) / "tags.json"
+    output_file = Path(output_dir) / TAGS_JSON_FILE
     previous_tags = []
     no_build = not force_rebuild
     if output_file.exists():

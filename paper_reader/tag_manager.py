@@ -31,6 +31,7 @@ from paper_reader.config import (
     DOCS_DIR,
     SUMMARIZED_MD_FILE,
     LOGGER,
+    TAGS_JSON_FILE,
 )
 from paper_reader.openai_utils import (
     generate_completion,
@@ -351,7 +352,7 @@ async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
                     article["tags"] = pruned_tags
                     # Update the tag file
                     paper_folder = Path(article["paper_path"]).parent
-                    tag_json_path = os.path.join(paper_folder, "tags.json")
+                    tag_json_path = os.path.join(paper_folder, TAGS_JSON_FILE)
                     set_diff = (set(existing_tags) - set(pruned_tags)) | (set(pruned_tags) - set(existing_tags))
                     if set_diff:
                         LOGGER.info(

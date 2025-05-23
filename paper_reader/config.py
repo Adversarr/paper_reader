@@ -80,6 +80,7 @@ EXTRACTED_MD_FILE = "extracted.md"
 SUMMARIZED_MD_FILE = "summarized.md"
 SHORT_SUMMARIZED_MD_FILE = "short_summarized.md"
 TLDR_MD_FILE = "tldr.md"
+TAGS_JSON_FILE = "tags.json"
 TAG_DESCRIPTION_MD_FILE = "description.md"
 TAG_SURVEY_MD_FILE = "survey.md"
 

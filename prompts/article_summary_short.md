@@ -17,7 +17,7 @@ Your primary goal is to populate this template with a comprehensive yet concise 
 
 # [Title of the Paper/Article]
 
-[Abstract of the Paper/Article. If not provided, please write a brief summary (5-7 sentences) of the main points covered in the paper.]
+<!-- Put the abstract of the Paper/Article here. If not provided, please write a brief summary (5-7 sentences) of the main points covered in the paper. -->
 
 ## Quick Look
 
