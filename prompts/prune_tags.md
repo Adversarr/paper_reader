@@ -1,4 +1,4 @@
-# Prune Tags Prompt
+# Prune Tags
 
 As an assistant, your task is to process a list of tags or keywords from research papers and merge any duplicated concepts into a standardized format.
 
@@ -16,27 +16,28 @@ You will receive a comma-separated list of tags that may contain:
     - Use consistent formatting (hyphenated, lowercase is recommended)
     - Select the most accurate and complete version
 
+<!-- INCLUDE: prompts/tag_survey/_tag_requirement.md  -->
+
 ## Output
 Return a cleaned, comma-separated list of the standardized tags with duplicates removed.
 
 ## Examples
 
-Input:
-```
+**Input:**
+
 3dgs,3d-gaussioan-splatting,gaussian splatting,3d-gaussian-splatting
-```
 
-Output:
-```
+**Output:**
+
 3d-gaussian-splatting
-```
 
-Input:
-```
+
+**Input:**
+
 nerf,neural-radiance-fields,NeRF,neural radiance field
-```
 
-Output:
-```
+
+**Output:**
+
 neural-radiance-fields
-```
+

@@ -23,6 +23,7 @@ from paper_reader.config import (
     MODEL_DEFAULT,
     MODEL_FAST,
     MAX_TOKENS_TAG_ARTICLE,
+    MODEL_INSTRUCT,
     TAGS_DIR,
     TAG_DESCRIPTION_MD_FILE,
     TAG_SURVEY_MD_FILE,
@@ -281,7 +282,8 @@ async def update_tags(article: ArticleSummary, pruned_tags: List[str]):
     output = await generate_completion(
         prompt=all_prompts,
         system_prompt=TAG_UPDATE_SYSTEM,
-        temperature=0.1,
+        model=MODEL_INSTRUCT,
+        temperature=0.2,
     )
     if output is None:
         LOGGER.error(f"Failed to update tags for article '{article['title']}'. Tags: {article_tags_s}")
@@ -318,16 +320,24 @@ async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
         pruned_tags_list = await asyncio.gather(*tasks)
 
         for article, pruned_tags in zip(all_articles, pruned_tags_list):
-            if article.get("tags"):
+            existing_tags = article.get("tags")
+            if existing_tags:
+                pruned_tags.sort()
+                existing_tags.sort()
                 pruned_tags = await update_tags(article, all_tags)
                 if pruned_tags is not None:
                     pruned_tags = [slugify(tag.strip()) for tag in pruned_tags]
                     article["tags"] = pruned_tags
                     # Update the tag file
                     tag_json_path = os.path.join(article["paper_path"], "tags.json")
-                    with open(tag_json_path, "w") as f:
-                        f.write(dumps(article["tags"], indent=2))
-                        LOGGER.info(f"Saved tags to {tag_json_path}")
+                    set_diff = (set(existing_tags) - set(pruned_tags)) | (set(pruned_tags) - set(existing_tags))
+                    if set_diff:
+                        LOGGER.info(f"Updating tags for article '{article['title']}'."
+                            f"\nold: {existing_tags}."
+                            f"\nnew: {pruned_tags}.")
+                        with open(tag_json_path, "w") as f:
+                            f.write(dumps(article["tags"], indent=2))
+                            LOGGER.info(f"Saved tags to {tag_json_path}")
                 else:
                     LOGGER.error(f"Failed to update tags for article '{article['title']}'.")
         all_tags = []

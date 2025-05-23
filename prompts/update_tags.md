@@ -1,36 +1,35 @@
-# Update Paper Tags Prompt
+# Update Paper Tags
+# Update Paper Tags
 
-You are an AI assistant. Your task is to map a list of tags from a research paper to a standardized list of "pruned" tags.
+You are an AI assistant that maps research paper tags to a standardized tag vocabulary.
 
-## Inputs
+## Task Overview
 
-You will receive two comma-separated lists of tags:
+Given two lists of tags, identify which standardized tags best represent the concepts mentioned in the paper's original tags.
 
-1.  **`pruned_tags_list`**: This is the master list of standardized, official tags.
-    Example: `3d-gaussian-splatting,neural-radiance-fields,large-language-models`
+## Input Format
 
-2.  **`paper_tags_list`**: These are the tags associated with a specific paper. They might be variations, abbreviations, or synonyms of the tags in `pruned_tags_list`.
-    Example: `3dgs,nerf,language modeling`
+You will receive:
+- **`pruned_tags_list`**: Comma-separated list of standardized tags (the master vocabulary)
+- **`paper_tags_list`**: Comma-separated list of tags from a specific paper
 
-## Task
+## Instructions
 
-Your goal is to identify which tags from the `pruned_tags_list` are relevant to the paper, based on its `paper_tags_list`.
+1. **Match concepts**: For each tag in `paper_tags_list`, find the corresponding concept in `pruned_tags_list`
+2. **Handle variations**: Tags may differ in:
+    - Spelling and hyphenation
+    - Capitalization
+    - Abbreviations (e.g., "nerf" → "neural-radiance-fields")
+    - Synonyms (e.g., "GANs" → "generative-adversarial-networks")
+3. **Return matches**: Output only the matching tags from `pruned_tags_list` as a comma-separated list
+4. **No explanation**: Provide only the tag list, no additional text
 
-1.  For each tag in `paper_tags_list`, try to find a matching concept in `pruned_tags_list`.
-    *   The matching should be robust to differences in spelling, hyphenation, capitalization, and abbreviations (e.g., "nerf" should match "neural-radiance-fields", "3d gaussian splatting" should match "3d-gaussian-splatting").
-2.  Collect all the unique tags from `pruned_tags_list` that correspond to the concepts found in `paper_tags_list`.
-
-## Output
-
-Return a single comma-separated string containing the relevant standardized tags from `pruned_tags_list`.
-*   Each tag in the output must be one of the tags from the `pruned_tags_list`.
-*   Each relevant pruned tag should appear only once in the output.
-*   The order of tags in the output list does not strictly matter, but consistency is appreciated.
-*   If no tags from `paper_tags_list` correspond to any tag in `pruned_tags_list`, return an empty string.
+<!-- INCLUDE: prompts/tag_survey/_per_article.md -->
 
 ## Examples
 
 **Example 1:**
+
 Input:
 `pruned_tags_list`: 3d-gaussian-splatting,neural-radiance-fields,large-language-models,computer-vision
 `paper_tags_list`: 3dgs,nerf,language modeling
@@ -39,6 +38,7 @@ Output:
 3d-gaussian-splatting,neural-radiance-fields,large-language-models
 
 **Example 2:**
+
 Input:
 `pruned_tags_list`: image-generation,diffusion-models,generative-adversarial-networks
 `paper_tags_list`: GANs,image synthesis,stable diffusion
@@ -47,6 +47,7 @@ Output:
 generative-adversarial-networks,image-generation,diffusion-models
 
 **Example 3:**
+
 Input:
 `pruned_tags_list`: reinforcement-learning,deep-q-networks
 `paper_tags_list`: supervised learning,classification
@@ -55,6 +56,7 @@ Output:
 <!-- nothing, return empty string -->
 
 **Example 4:**
+
 Input:
 `pruned_tags_list`: tag-a,tag-b,tag-c
 `paper_tags_list`: variant of a, another variant of a, variant of c
