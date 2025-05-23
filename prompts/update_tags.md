@@ -30,36 +30,44 @@ You will receive:
 
 **Example 1:**
 
-Input:
+**Input:**
+
 `pruned_tags_list`: 3d-gaussian-splatting,neural-radiance-fields,large-language-models,computer-vision
 `paper_tags_list`: 3dgs,nerf,language modeling
 
-Output:
+**Output:**
+
 3d-gaussian-splatting,neural-radiance-fields,large-language-models
 
 **Example 2:**
 
-Input:
+**Input:**
+
 `pruned_tags_list`: image-generation,diffusion-models,generative-adversarial-networks
 `paper_tags_list`: GANs,image synthesis,stable diffusion
 
-Output:
+**Output:**
+
 generative-adversarial-networks,image-generation,diffusion-models
 
 **Example 3:**
 
-Input:
+**Input:**
+
 `pruned_tags_list`: reinforcement-learning,deep-q-networks
 `paper_tags_list`: supervised learning,classification
 
-Output:
+**Output:**
+
 <!-- nothing, return empty string -->
 
 **Example 4:**
 
-Input:
+**Input:**
+
 `pruned_tags_list`: tag-a,tag-b,tag-c
 `paper_tags_list`: variant of a, another variant of a, variant of c
 
-Output:
+**Output:**
+
 tag-a,tag-c

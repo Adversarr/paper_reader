@@ -19,7 +19,10 @@ You will receive a comma-separated list of tags that may contain:
 <!-- INCLUDE: prompts/tag_survey/_tag_requirement.md  -->
 
 ## Output
+
 Return a cleaned, comma-separated list of the standardized tags with duplicates removed.
+
+You should not include any additional text or explanation in your response.
 
 ## Examples
 

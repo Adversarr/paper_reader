@@ -331,6 +331,7 @@ async def generate_completion(
     temperature: float = DEFAULT_TEMPERATURE,
     thinking=False,
     stream: bool = DEFAULT_STREAM,
+    json_mode=False,
 ) -> Optional[str]:
     if stream or thinking:
         return await agenerate_completion_streaming(

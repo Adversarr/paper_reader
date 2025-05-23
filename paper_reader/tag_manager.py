@@ -2,6 +2,7 @@
 import asyncio
 from json import dumps
 import os
+from pathlib import Path
 from typing import Iterable, List, Dict, Optional
 from paper_reader.models import TagInfo, ArticleSummary, Content
 from paper_reader.prompt_helpers import load_prompt
@@ -21,7 +22,6 @@ from paper_reader.utils import (
 from paper_reader.config import (
     REBUILD_ALL_TAGS,
     MODEL_DEFAULT,
-    MODEL_FAST,
     MAX_TOKENS_TAG_ARTICLE,
     MODEL_INSTRUCT,
     TAGS_DIR,
@@ -35,7 +35,6 @@ from paper_reader.config import (
 from paper_reader.openai_utils import (
     generate_completion,
     get_embedding,
-    # generate_completion,
 )
 
 # Global store for tags (in-memory, could be persisted to a JSON file)
@@ -46,7 +45,7 @@ from paper_reader.openai_utils import (
 _GLOBAL_TAG_STORE: Dict[str, TagInfo] = {}
 
 
-def _str_to_list(s: str) -> List[str]:
+def extract_comma_list(s: str) -> List[str]:
     # 1. remove all the none [0-9a-zA-Z] or `-` charactors in string
     pruned_str = "".join([c if c.isalnum() or c in "-," else "" for c in s])
     return [i.strip() for i in pruned_str.split(",") if i.strip()]
@@ -188,7 +187,7 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
                 text=load_prompt("prompts/tag_survey/_article1.md"),
             ),
         ]
-        LOGGER.info(f"Tag \"{tag_name}\" related paper: {paper_slug}")
+        LOGGER.info(f'Tag "{tag_name}" related paper: {paper_slug}')
         response = await generate_completion(
             all_prompts + article_prompt,
             system_prompt,
@@ -248,6 +247,27 @@ async def prune_tags(tags: Iterable[str]) -> List[str]:
         return [slugify(tag) for tag in tags_stripped]
 
 
+async def ensure_is_tag_list(text: str) -> List[str] | None:
+    """
+    Ensure the text is a list of tags.
+    This function checks if the text is a valid list of tags and returns it as a list.
+    """
+    if not text:
+        return []
+
+    output = await generate_completion(
+        prompt=text,
+        system_prompt="You should extract the comma separated list of tags from the previous output, and drop all the other information.",
+        model=MODEL_INSTRUCT,
+        temperature=0,
+    )
+    if output is None:
+        LOGGER.error(f"Failed to extract tags from the output: {text}")
+        return None
+
+    return extract_comma_list(output)
+
+
 async def update_tags(article: ArticleSummary, pruned_tags: List[str]):
     """
     Update the tags using pruned_tags
@@ -285,11 +305,12 @@ async def update_tags(article: ArticleSummary, pruned_tags: List[str]):
         model=MODEL_INSTRUCT,
         temperature=0.2,
     )
+
     if output is None:
         LOGGER.error(f"Failed to update tags for article '{article['title']}'. Tags: {article_tags_s}")
         return None
-
-    return _str_to_list(output)
+    # Try again to make sure we get a valid response
+    return await ensure_is_tag_list(output)
 
 
 async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
@@ -329,12 +350,15 @@ async def process_all_tags_iteratively(all_articles: List[ArticleSummary]):
                     pruned_tags = [slugify(tag.strip()) for tag in pruned_tags]
                     article["tags"] = pruned_tags
                     # Update the tag file
-                    tag_json_path = os.path.join(article["paper_path"], "tags.json")
+                    paper_folder = Path(article["paper_path"]).parent
+                    tag_json_path = os.path.join(paper_folder, "tags.json")
                     set_diff = (set(existing_tags) - set(pruned_tags)) | (set(pruned_tags) - set(existing_tags))
                     if set_diff:
-                        LOGGER.info(f"Updating tags for article '{article['title']}'."
+                        LOGGER.info(
+                            f"Updating tags for article '{article['title']}'."
                             f"\nold: {existing_tags}."
-                            f"\nnew: {pruned_tags}.")
+                            f"\nnew: {pruned_tags}."
+                        )
                         with open(tag_json_path, "w") as f:
                             f.write(dumps(article["tags"], indent=2))
                             LOGGER.info(f"Saved tags to {tag_json_path}")

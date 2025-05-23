@@ -1,17 +1,16 @@
+from pathlib import Path
 from typing import List, Optional
 import os
 
 from paper_reader.config import (
     ARTICLE_SUMMARY_TEMPERATURE,
     ARTICLE_SUMMARY_VERBOSE,
-    MODEL_DEFAULT,
     REBUILD_ALL,
     ENABLE_THINKING,
     DOCS_DIR,
     ENABLE_RAG_FOR_ARTICLES,
     EXTRACTED_MD_FILE,
     MODEL_INSTRUCT,
-    MODEL_LONG,
     LOGGER,
     MAX_TOKENS_PER_ARTICLE_SUMMARY_PASS,
     MAX_TOKENS_TAGS,
@@ -20,6 +19,7 @@ from paper_reader.config import (
     SUMMARIZED_MD_FILE,
     TLDR_MD_FILE,
 )
+from json import loads, dumps
 from paper_reader.models import ArticleSummary, Content
 from paper_reader.openai_utils import generate_completion, get_embedding
 from paper_reader.prompt_helpers import load_prompt
@@ -29,7 +29,6 @@ from paper_reader.prompts import (
     EXTRACT_TAGS_SYSTEM,
     ARTICLE_SHORT_SUMMARY_SYSTEM,
     TLDR_SUMMARY_SYSTEM,
-    DEFAULT_SYSTEM_PROMPT,
     create_message_entry,
 )
 from paper_reader.utils import (
@@ -37,7 +36,7 @@ from paper_reader.utils import (
     save_text_and_embedding,
 )
 from paper_reader.vector_store import get_relevant_context_for_prompt
-from paper_reader.tag_manager import prune_tags
+from paper_reader.tag_manager import ensure_is_tag_list, prune_tags
 
 
 async def _agenerate_and_save_content_tldr(
@@ -51,10 +50,10 @@ async def _agenerate_and_save_content_tldr(
     """Helper to generate, embed, and save a TLDR summary."""
     existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
     if existing_content_obj and not force_rebuild:
+        LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
 
-    LOGGER.info(f"Generating {output_filename_md} for {output_dir}...")
-
+    LOGGER.info(f"Generating TLDR for {output_dir}...")
     # RAG: Augment prompt with relevant context if query is provided
     rag_ctx = ""
     if rag_query_for_prompt and ENABLE_RAG_FOR_ARTICLES:
@@ -62,16 +61,10 @@ async def _agenerate_and_save_content_tldr(
 
     system_prompt = TLDR_SUMMARY_SYSTEM
     all_prompts: list = []
-    all_prompts.append(
-        create_message_entry(
-            "user", "<-- This is the Article Summary -->\n\n{text}", text=text
-        )
-    )
+    all_prompts.append(create_message_entry("user", "<-- This is the Article Summary -->\n\n{text}", text=text))
     if rag_ctx and rag_ctx != "No existing content to retrieve from.":
         all_prompts.append(
-            create_message_entry(
-                "user", f"<-- This is some context from similar papers -->\n\n{rag_ctx}"
-            )
+            create_message_entry("user", f"<-- This is some context from similar papers -->\n\n{rag_ctx}")
         )
 
     generated_text = await generate_completion(
@@ -86,9 +79,7 @@ async def _agenerate_and_save_content_tldr(
         return None
 
     embedding_vector = get_embedding(generated_text)
-    save_text_and_embedding(
-        output_dir, output_filename_md, generated_text, embedding_vector
-    )
+    save_text_and_embedding(output_dir, output_filename_md, generated_text, embedding_vector)
     return Content(content=generated_text, vector=embedding_vector)
 
 
@@ -116,6 +107,8 @@ async def _agenerate_and_save_content_article_summary(
     if existing_content_obj and not force_rebuild:
         LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
+
+    LOGGER.info(f"Generating {output_filename_md} for {output_dir}...")
     all_prompts = [
         create_message_entry(
             "user",
@@ -199,9 +192,7 @@ async def _agenerate_and_save_content_article_summary(
         all_generated.append(create_message_entry("assistant", generated_text))
 
         if ARTICLE_SUMMARY_VERBOSE:
-            LOGGER.debug(
-                "#" * 50 + f"\nGenerated {stage}:\n{generated_text}\n" + "#" * 50
-            )
+            LOGGER.debug("#" * 50 + f"\nGenerated {stage}:\n{generated_text}\n" + "#" * 50)
 
     ####################### generate the final summary
     merge_prompt = create_message_entry("user", template=ARTICLE_SUMMARY_MERGE_PROMPT)
@@ -220,14 +211,10 @@ async def _agenerate_and_save_content_article_summary(
 
     ####################### save the final summary
     embedding_vector = get_embedding(generated_text)
-    save_text_and_embedding(
-        output_dir, output_filename_md, generated_text, embedding_vector
-    )
+    save_text_and_embedding(output_dir, output_filename_md, generated_text, embedding_vector)
     LOGGER.info(f'Done. Saved to "{output_dir}/{output_filename_md}"')
     if ARTICLE_SUMMARY_VERBOSE:
-        LOGGER.debug(
-            "#" * 50 + "Generated Summary Full:\n" + generated_text + "\n" + "#" * 50
-        )
+        LOGGER.debug("#" * 50 + "Generated Summary Full:\n" + generated_text + "\n" + "#" * 50)
     return Content(content=generated_text, vector=embedding_vector)
 
 
@@ -242,17 +229,14 @@ async def _agenerate_and_save_content_short_summary(
     """Generates a shorter, more concise summary of an article."""
     existing_content_obj = load_text_and_embedding(output_dir, output_filename_md)
     if existing_content_obj and not force_rebuild:
+        LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
 
     LOGGER.info(f"Generating short summary for {output_dir}...")
 
     # Build the prompt
     all_prompts = []
-    all_prompts.append(
-        create_message_entry(
-            "user", f"<-- This is the paper content -->\n\n{full_text[:1000]}..."
-        )
-    )
+    all_prompts.append(create_message_entry("user", f"<-- This is the paper content -->\n\n{full_text[:1000]}..."))
     all_prompts.append(
         create_message_entry(
             "user",
@@ -285,19 +269,35 @@ async def _agenerate_and_save_content_short_summary(
     embedding_vector = get_embedding(generated_text)
 
     # Save the short summary
-    save_text_and_embedding(
-        output_dir, output_filename_md, generated_text, embedding_vector
-    )
+    save_text_and_embedding(output_dir, output_filename_md, generated_text, embedding_vector)
 
     return Content(content=generated_text, vector=embedding_vector)
 
 
 async def agenerate_tags(
     text: str,
-    previous_tags: Optional[List[str]] = None,
+    output_dir: str,
     thinking: bool = ENABLE_THINKING,
+    force_rebuild: bool = REBUILD_ALL,
 ) -> List[str]:
     """Generates tags for an article using NLP and returns a list of pruned tags."""
+    output_file = Path(output_dir) / "tags.json"
+    previous_tags = []
+    no_build = not force_rebuild
+    if output_file.exists():
+        previous_tags = loads(output_file.read_text())
+        for t in previous_tags:
+            if not isinstance(t, str):
+                LOGGER.warning(f"Invalid tag found: {t}. Expected a string.")
+                previous_tags.remove(t)
+                no_build = False
+    else:
+        no_build = False
+
+    if no_build:
+        LOGGER.info(f"Found existing tags in {output_file}, loading.")
+        return previous_tags
+
     if not text.strip():
         LOGGER.warning("Cannot generate tags for empty text")
         return []
@@ -332,6 +332,7 @@ async def agenerate_tags(
         temperature=ARTICLE_SUMMARY_TEMPERATURE,  # Lower temperature for more consistent tags
         thinking=thinking,
     )
+    pruned_tags = []
 
     if not tags_text:
         LOGGER.warning("Failed to generate tags")
@@ -342,8 +343,12 @@ async def agenerate_tags(
 
     # Prune the tags to get a standardized list
     pruned_tags = await prune_tags(raw_tags)
+    tag = await ensure_is_tag_list(",".join(pruned_tags))
 
-    return pruned_tags
+    output_file.write_text(dumps(pruned_tags, indent=4))
+    LOGGER.info(f"Tags saved to {output_file}")
+
+    return tag if tag is not None else pruned_tags
 
 
 async def aprocess_article(
@@ -384,7 +389,7 @@ async def aprocess_article(
     )
 
     # Generate full summary
-    LOGGER.info(f"Generating full summary for {article_title}")
+    # LOGGER.info(f"Generating full summary for {article_title}")
     article_summary["summary"] = await _agenerate_and_save_content_article_summary(
         extracted_content["content"],
         paper_dir,
@@ -397,7 +402,7 @@ async def aprocess_article(
         return article_summary
 
     # Generate short summary
-    LOGGER.info(f"Generating short summary for {article_title}")
+    # LOGGER.info(f"Generating short summary for {article_title}")
     article_summary["short_summary"] = await _agenerate_and_save_content_short_summary(
         extracted_content["content"],
         article_summary["summary"]["content"],
@@ -409,7 +414,7 @@ async def aprocess_article(
         return article_summary
 
     # Generate TLDR
-    LOGGER.info(f"Generating TLDR for {article_title}")
+    # LOGGER.info(f"Generating TLDR for {article_title}")
     article_summary["tldr"] = await _agenerate_and_save_content_tldr(
         article_summary["short_summary"]["content"],
         paper_dir,
@@ -419,9 +424,10 @@ async def aprocess_article(
     )
 
     # Generate tags
-    LOGGER.info(f"Generating tags for {article_title}")
+    # LOGGER.info(f"Generating tags for {article_title}")
     article_summary["tags"] = await agenerate_tags(
         article_summary["short_summary"]["content"],
+        output_dir=paper_dir,
     )
 
     LOGGER.info(f"Finished processing article: {article_title}")
