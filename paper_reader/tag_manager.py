@@ -187,6 +187,7 @@ async def agenerate_tag_survey(tag_name: str, force_regenerate: bool = False):
                 text=load_prompt("prompts/tag_survey/_article1.md"),
             ),
         ]
+        LOGGER.info(f"Tag \"{tag_name}\" related paper: {paper_slug}")
         response = await generate_completion(
             all_prompts + article_prompt,
             system_prompt,
