@@ -52,7 +52,7 @@ def load_text_and_embedding(base_path: str, filename_md: str) -> Optional[Conten
     npz_path = os.path.join(base_path, filename_md.replace(".md", ".npz"))
 
     if not os.path.exists(md_path):
-        LOGGER.warning(f"Warning: {md_path} does not exist.")
+        LOGGER.debug(f"Warning: {md_path} does not exist.")
         return None
 
     with open(md_path, "r", encoding="utf-8") as f:

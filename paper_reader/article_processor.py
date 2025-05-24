@@ -110,7 +110,6 @@ async def _agenerate_and_save_content_article_summary(
         LOGGER.info(f"Found existing {output_filename_md} in {output_dir}, loading.")
         return existing_content_obj
 
-    LOGGER.info(f"Generating {output_filename_md} for {output_dir}...")
     all_prompts = [
         create_message_entry(
             "user",
@@ -241,7 +240,7 @@ async def _agenerate_and_save_content_short_summary(
     all_prompts.append(
         create_message_entry(
             "user",
-            f"<-- This is the detailed summary of the paper -->\n\n{summary_text}",
+            f"<!-- This is the detailed summary of the paper -->\n\n{summary_text}\n\n<!-- End of detailed summary -->"
         )
     )
     all_prompts.append(

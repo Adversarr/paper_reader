@@ -1,5 +1,6 @@
 # openai_utils.py
 from asyncio import Semaphore
+import asyncio
 from typing import List, Optional
 
 import numpy as np
@@ -110,9 +111,7 @@ def _shortten_md(long_text: str, threshold=2000) -> str:
 
     all_text = long_text.split("\n\n")
     if len(all_text) < 3:
-        return (
-            long_text[: threshold // 2] + "\n\n...\n\n" + long_text[-threshold // 2 :]
-        )
+        return long_text[: threshold // 2] + "\n\n...\n\n" + long_text[-threshold // 2 :]
 
     return all_text[0] + "\n\n...\n\n" + all_text[-1]
 
@@ -196,9 +195,7 @@ def generate_completion_streaming(
         thinking_content = ""
 
         prompt_tokens = completion_tokens = total_tokens = 0
-        with Live(
-            Panel(Markdown(""), title="Generating Response"), refresh_per_second=10
-        ) as live:
+        with Live(Panel(Markdown(""), title="Generating Response"), refresh_per_second=10) as live:
             for chunk in stream:
                 if chunk.usage:
                     prompt_tokens = chunk.usage.prompt_tokens
@@ -215,7 +212,7 @@ def generate_completion_streaming(
                         Panel(
                             Markdown(_shortten_md(thinking_content)),
                             title=f"💭 Reasoning ({model})",
-                            border_style='green'
+                            border_style="green",
                         )
                     )
                 if hasattr(delta, "content") and delta.content is not None:
@@ -257,9 +254,7 @@ async def agenerate_completion_streaming(
     thinking: bool = False,
 ) -> str | None:
     if MAX_CONCURRENT == 1:
-        return generate_completion_streaming(
-            prompt, system_prompt, model, max_tokens, temperature, thinking
-        )
+        return generate_completion_streaming(prompt, system_prompt, model, max_tokens, temperature, thinking)
 
     async with semaphore:
         messages = []
@@ -331,14 +326,12 @@ async def generate_completion(
     temperature: float = DEFAULT_TEMPERATURE,
     thinking=False,
     stream: bool = DEFAULT_STREAM,
-    json_mode=False,
+    retry: int = 3,
 ) -> Optional[str]:
+    output = None
     if stream or thinking:
-        return await agenerate_completion_streaming(
-            prompt, system_prompt, model, max_tokens, temperature, thinking
-        )
-
-    async with semaphore:
+        output = await agenerate_completion_streaming(prompt, system_prompt, model, max_tokens, temperature, thinking)
+    else:
         messages = []
         messages.append({"role": "system", "content": system_prompt})
 
@@ -353,13 +346,14 @@ async def generate_completion(
                 TOTAL_CALL_COUNTER[model] = 0
             TOTAL_CALL_COUNTER[model] += 1
 
-            response = await aclient.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=False,
-            )
+            async with semaphore:
+                response = await aclient.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stream=False,
+                )
 
             # Update token usage statistics
             if hasattr(response, "usage") and response.usage is not None:
@@ -374,15 +368,31 @@ async def generate_completion(
 
             # Extract and return content
             if response.choices and response.choices[0].message.content:
-                return response.choices[0].message.content
-            return None
+                output = response.choices[0].message.content
 
         except (APIConnectionError, RateLimitError, APIStatusError) as e:
             LOGGER.error(f"API error while generating completion: {e}")
-            return None
         except Exception as e:
             LOGGER.error(f"Unexpected error while generating completion: {e}")
-            return None
+
+    if output is not None:
+        return output
+
+    if retry > 0:
+        await asyncio.sleep(60)
+        LOGGER.warning(f"Retrying... ({retry - 1} left)")
+        return await generate_completion(
+            prompt,
+            system_prompt,
+            model,
+            max_tokens,
+            temperature,
+            thinking,
+            stream,
+            retry - 1,
+        )
+
+    return None
 
 
 # if __name__ == "__main__":
